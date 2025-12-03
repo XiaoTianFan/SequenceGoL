@@ -14,7 +14,6 @@
         <div class="panel-inner">
             <div class="panel-header">
                 <div>
-                    <p class="eyebrow">Material Atlas Lab</p>
                     <h1>Cellular Automata MIDI Generator</h1>
                     <p class="muted">MIDI-mapped procedural grid using multiple automata rules.</p>
                 </div>
@@ -40,7 +39,11 @@
                 </label>
                 <label class="field">
                     <span>Rule Set</span>
-                    <select id="ruleSelect">
+                    <div class="custom-select" data-select="ruleSelect">
+                        <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select rule</button>
+                        <div class="custom-select-options" role="listbox"></div>
+                    </div>
+                    <select id="ruleSelect" class="native-select" aria-hidden="true">
                         <option value="conway">Conway's Game of Life</option>
                         <option value="highlife">HighLife</option>
                         <option value="seeds">Seeds</option>
@@ -73,13 +76,42 @@
                     </div>
                 </label>
                 <label class="field">
+                    <span>Active Columns</span>
+                    <div class="field-input bpm-control">
+                        <input type="range" id="columnSlider" min="4" max="16" value="11" step="1" />
+                        <input type="number" id="columnInput" min="4" max="16" value="11" step="1" />
+                        <span id="columnValue" class="value-chip">11 Columns</span>
+                    </div>
+                </label>
+                <label class="field">
+                    <span>Spawn Mode</span>
+                    <div class="field-input">
+                        <select id="spawnModeSelect">
+                            <option value="cascade" selected>Cascade</option>
+                            <option value="scanning">Scanning</option>
+                        </select>
+                    </div>
+                </label>
+                <label class="field">
+                    <span>Spawn Probability</span>
+                    <div class="field-input bpm-control">
+                        <input type="range" id="spawnRateSlider" min="0.25" max="4" value="1" step="0.25" />
+                        <input type="number" id="spawnRateInput" min="0.25" max="4" value="1" step="0.25" />
+                        <span id="spawnRateValue" class="value-chip">1.0×</span>
+                    </div>
+                </label>
+                <label class="field">
                     <span>MIDI Output</span>
                     <div class="field-input midi-select">
-                        <select id="midiOutputSelect">
-                            <option>Loading...</option>
-                        </select>
+                        <div class="custom-select" data-select="midiOutputSelect">
+                            <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select device</button>
+                            <div class="custom-select-options" role="listbox"></div>
+                        </div>
                         <button id="refreshMidiBtn" class="icon-button" aria-label="Refresh MIDI devices">↻</button>
                     </div>
+                    <select id="midiOutputSelect" class="native-select" aria-hidden="true">
+                        <option>Loading...</option>
+                    </select>
                 </label>
                 <button id="noteConfigBtn" class="cta outline">Note timing & thresholds</button>
             </section>
@@ -111,7 +143,7 @@
             <div class="overlay-body">
                 <p>Left click and drag to seed living cells. Right click scrubs cells back to stasis. Multiple automata rules are supported: Conway's B3/S23, HighLife B36/S23, Seeds B2/S, Star Wars B2/S345, Brian's Brain (three-state), and Diamoeba B35678/S5678.</p>
                 <p>The MIDI engine scans eleven stacked 8×8 sectors, mapped to an A Phrygian Dominant scale across channels 1–11. Music BPM and beat lengths are independent from simulation tempo, allowing polyrhythmic drift.</p>
-                <p>Route the Web MIDI output into any DAW or hardware synth to hear evolving harmonies. All surfaces follow the Material Atlas glassmorphism spec—sharp edges, high contrast, and responsive micro-interactions.</p>
+                <p>Route the Web MIDI output into any DAW or hardware synth to hear evolving harmonies.</p>
             </div>
         </div>
     </section>

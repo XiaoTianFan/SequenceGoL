@@ -1,16 +1,19 @@
 const NOTE_CONFIG = [
-  { id: "note1", label: "A", color: "note1", column: 0, startRow: 0, beats: 4, threshold: 8, midiNote: 45, channel: 1 },
-  { id: "note2", label: "B♭", color: "note2", column: 1, startRow: 8, beats: 2, threshold: 7, midiNote: 46, channel: 2 },
-  { id: "note3", label: "C♯", color: "note3", column: 2, startRow: 16, beats: 2, threshold: 6, midiNote: 49, channel: 3 },
-  { id: "note4", label: "D", color: "note4", column: 3, startRow: 24, beats: 1, threshold: 5, midiNote: 50, channel: 4 },
-  { id: "note5", label: "E", color: "note5", column: 4, startRow: 32, beats: 1, threshold: 4, midiNote: 52, channel: 5 },
-  { id: "note6", label: "F", color: "note6", column: 5, startRow: 40, beats: 1, threshold: 3, midiNote: 53, channel: 6 },
-  { id: "note7", label: "G", color: "note7", column: 6, startRow: 48, beats: 0.5, threshold: 3, midiNote: 55, channel: 7 },
-  { id: "note8", label: "A↑", color: "note8", column: 7, startRow: 56, beats: 0.5, threshold: 5, midiNote: 57, channel: 8 },
-  { id: "note9", label: "C♯↑", color: "note9", column: 8, startRow: 64, beats: 0.5, threshold: 4, midiNote: 61, channel: 9 },
-  { id: "note10", label: "D↑", color: "note10", column: 9, startRow: 72, beats: 0.25, threshold: 3, midiNote: 62, channel: 10 },
-  { id: "note11", label: "E↑", color: "note11", column: 10, startRow: 80, beats: 0.25, threshold: 2, midiNote: 64, channel: 11 }
+  { id: "note1", label: "A",   color: "note1",  durationBeats: 1,   threshold: 8, midiNote: 45, channel: 1,  active: true },
+  { id: "note2", label: "A#",  color: "note2",  durationBeats: 1,   threshold: 7, midiNote: 46, channel: 2,  active: true },
+  { id: "note3", label: "B",   color: "note3",  durationBeats: 1,   threshold: 6, midiNote: 47, channel: 3,  active: true },
+  { id: "note4", label: "C",   color: "note4",  durationBeats: 1,   threshold: 5, midiNote: 48, channel: 4,  active: true },
+  { id: "note5", label: "C#",  color: "note5",  durationBeats: 1,   threshold: 4, midiNote: 49, channel: 5,  active: true },
+  { id: "note6", label: "D",   color: "note6",  durationBeats: 1,   threshold: 3, midiNote: 50, channel: 6,  active: true },
+  { id: "note7", label: "D#",  color: "note7",  durationBeats: 0.5, threshold: 3, midiNote: 51, channel: 7,  active: true },
+  { id: "note8", label: "E",   color: "note8",  durationBeats: 0.5, threshold: 5, midiNote: 52, channel: 8,  active: true },
+  { id: "note9", label: "F",   color: "note9",  durationBeats: 0.5, threshold: 4, midiNote: 53, channel: 9,  active: true },
+  { id: "note10", label: "F#", color: "note10", durationBeats: 0.25, threshold: 3, midiNote: 54, channel: 10, active: true },
+  { id: "note11", label: "G",  color: "note11", durationBeats: 0.25, threshold: 2, midiNote: 55, channel: 11, active: true },
+  { id: "note12", label: "G#", color: "note12", durationBeats: 0.25, threshold: 2, midiNote: 56, channel: 12, active: true }
 ];
+
+const NOTE_COLOR_CLASSES = NOTE_CONFIG.map((note) => note.color);
 
 const BEAT_OPTIONS = [
   { value: 4, label: "4 beats" },
@@ -22,13 +25,15 @@ const BEAT_OPTIONS = [
   { value: 0.0625, label: "1/16 beat" }
 ];
 
-const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
+const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 class CellularAutomataApp {
   constructor() {
-    this.gridSize = 88;
-    this.musicBarHeight = 8;
-    this.musicBarWidth = 8;
+    this.musicBarHeight = 6;
+    this.musicBarWidth = 6;
+    this.maxColumns = 16;
+    this.activeColumnCount = 11;
+    this.gridSize = this.musicBarWidth * this.activeColumnCount;
     this.grid = this.createMatrix();
     this.nextGrid = this.createMatrix();
     this.isRunning = false;
@@ -37,12 +42,14 @@ class CellularAutomataApp {
 
     this.isMusicRunning = false;
     this.bpm = 75;
-    this.musicBoxes = NOTE_CONFIG.map((config) => ({
-      ...config,
-      position: config.startRow,
-      intervalId: null,
-      timeoutId: null
-    }));
+    this.musicBoxes = [];
+    this.boxIdCounter = 0;
+    this.cascadeFrameId = null;
+    this.columnSpawnAccumulator = 0;
+    this.spawnMode = "cascade";
+    this.columnNextSpawnMs = [];
+    this.columnNextSpawnMeanBeats = 1;
+    this.spawnRateFactor = 1; // 1x default
 
     this.isMouseDown = false;
     this.isRightClick = false;
@@ -50,17 +57,29 @@ class CellularAutomataApp {
     this.activeNotes = new Map();
     this.midiAccess = null;
     this.midiOutput = null;
+    this.preferredMidiOutputId = null;
 
     this.cacheElements();
+    this.customSelects = new Map();
+    this.initCustomSelects();
     this.buildGrid();
     this.attachEventListeners();
     this.renderNoteConfig();
     this.initializeMIDI();
   }
 
+  spawnFullRow() {
+    for (let i = 0; i < this.activeColumnCount; i += 1) {
+      // ensure we don't exceed per-column cap
+      const countInCol = this.musicBoxes.reduce((acc, b) => acc + (b.columnIndex === i ? 1 : 0), 0);
+      if (countInCol < 4) this.spawnBox(i);
+    }
+  }
+
   cacheElements() {
     this.elements = {
       grid: document.getElementById("grid"),
+      canvasWrapper: document.querySelector(".canvas-wrapper"),
       startBtn: document.getElementById("startBtn"),
       stopBtn: document.getElementById("stopBtn"),
       clearBtn: document.getElementById("clearBtn"),
@@ -73,6 +92,13 @@ class CellularAutomataApp {
       bpmSlider: document.getElementById("bpmSlider"),
       bpmInput: document.getElementById("bpmInput"),
       bpmValue: document.getElementById("bpmValue"),
+      columnSlider: document.getElementById("columnSlider"),
+      columnInput: document.getElementById("columnInput"),
+      columnValue: document.getElementById("columnValue"),
+      spawnRateSlider: document.getElementById("spawnRateSlider"),
+      spawnRateInput: document.getElementById("spawnRateInput"),
+      spawnRateValue: document.getElementById("spawnRateValue"),
+      spawnModeSelect: document.getElementById("spawnModeSelect"),
       midiOutputSelect: document.getElementById("midiOutputSelect"),
       refreshMidiBtn: document.getElementById("refreshMidiBtn"),
       midiStatusText: document.getElementById("midiStatusText"),
@@ -93,6 +119,9 @@ class CellularAutomataApp {
   buildGrid() {
     this.cells = [];
     this.elements.grid.innerHTML = "";
+    // apply dynamic grid template to match current gridSize
+    this.elements.grid.style.gridTemplateColumns = `repeat(${this.gridSize}, var(--cell-size))`;
+    this.elements.grid.style.gridTemplateRows = `repeat(${this.gridSize}, var(--cell-size))`;
     for (let row = 0; row < this.gridSize; row += 1) {
       for (let col = 0; col < this.gridSize; col += 1) {
         const cell = document.createElement("div");
@@ -103,6 +132,7 @@ class CellularAutomataApp {
         this.cells.push(cell);
       }
     }
+    this.updateGridCellSize();
   }
 
   attachEventListeners() {
@@ -117,6 +147,13 @@ class CellularAutomataApp {
       musicStopBtn,
       bpmSlider,
       bpmInput,
+      columnSlider,
+      columnInput,
+      columnValue,
+      spawnRateSlider,
+      spawnRateInput,
+      spawnRateValue,
+      spawnModeSelect,
       midiOutputSelect,
       refreshMidiBtn,
       panelToggle,
@@ -161,8 +198,55 @@ class CellularAutomataApp {
     bpmSlider.addEventListener("input", (event) => handleBpmChange(event.target.value));
     bpmInput.addEventListener("input", (event) => handleBpmChange(event.target.value));
 
+    const handleColumnChange = (value) => {
+      const sanitized = Math.min(this.maxColumns, Math.max(4, Number(value) || this.activeColumnCount));
+      this.activeColumnCount = sanitized;
+      columnSlider.value = String(sanitized);
+      columnInput.value = String(sanitized);
+      columnValue.textContent = `${sanitized} ${sanitized === 1 ? "Column" : "Columns"}`;
+      // Recompute grid size and rebuild grid to match fixed 6x6 box per column
+      const newGridSize = this.musicBarWidth * this.activeColumnCount;
+      if (newGridSize !== this.gridSize) {
+        this.gridSize = newGridSize;
+        this.grid = this.createMatrix();
+        this.nextGrid = this.createMatrix();
+        this.buildGrid();
+      }
+      if (this.isMusicRunning) {
+        this.stopMusic();
+        this.startMusic();
+      }
+    };
+
+    columnSlider.addEventListener("input", (event) => handleColumnChange(event.target.value));
+    columnInput.addEventListener("input", (event) => handleColumnChange(event.target.value));
+
+    const handleSpawnRateChange = (value) => {
+      const numeric = Number(value) || 1;
+      const clamped = Math.min(4, Math.max(0.25, numeric));
+      this.spawnRateFactor = clamped;
+      spawnRateSlider.value = String(clamped);
+      spawnRateInput.value = String(clamped);
+      spawnRateValue.textContent = `${clamped.toFixed(2)}×`;
+      this.columnNextSpawnMeanBeats = 1 / this.spawnRateFactor;
+      if (this.isMusicRunning) {
+        this.initializeColumns();
+      }
+    };
+
+    spawnRateSlider.addEventListener("input", (event) => handleSpawnRateChange(event.target.value));
+    spawnRateInput.addEventListener("input", (event) => handleSpawnRateChange(event.target.value));
+
+    spawnModeSelect.addEventListener("change", (event) => {
+      this.spawnMode = event.target.value === "scanning" ? "scanning" : "cascade";
+      if (this.isMusicRunning) {
+        this.stopMusic();
+        this.startMusic();
+      }
+    });
+
     midiOutputSelect.addEventListener("change", (event) => this.selectMIDIDevice(event.target.value));
-    refreshMidiBtn.addEventListener("click", () => this.updateMIDIDeviceList());
+    refreshMidiBtn.addEventListener("click", () => this.rescanMIDIDevices());
 
     grid.addEventListener("mousedown", (event) => this.handlePointerDown(event));
     grid.addEventListener("mousemove", (event) => this.handlePointerMove(event));
@@ -194,8 +278,13 @@ class CellularAutomataApp {
         this.closeOverlay("aboutOverlay");
         this.closeOverlay("noteConfigOverlay");
         this.togglePanel(false);
+        this.closeAllCustomSelects();
       }
     });
+
+    document.addEventListener("click", (event) => this.handleDocumentClick(event));
+
+    window.addEventListener("resize", () => this.updateGridCellSize());
   }
 
   updateSimBpmDisplay() {
@@ -338,15 +427,11 @@ class CellularAutomataApp {
     this.elements.musicStartBtn.disabled = true;
     this.elements.musicStopBtn.disabled = false;
     this.resetMusicBoxes();
-
-    this.musicBoxes.forEach((box, index) => {
-      const timing = this.calculateTiming(box.beats);
-      const startDelay = this.calculateTiming(0.125) * index;
-      box.timeoutId = setTimeout(() => {
-        this.updateMusicBox(index);
-        box.intervalId = setInterval(() => this.updateMusicBox(index), timing);
-      }, startDelay);
-    });
+    this.initializeColumns();
+    if (this.spawnMode === "scanning") {
+      this.spawnFullRow();
+    }
+    this.startCascadeLoop();
   }
 
   stopMusic() {
@@ -357,94 +442,214 @@ class CellularAutomataApp {
     this.resetMusicBoxes();
     this.stopAllMIDINotes();
     this.clearMusicHighlights();
+    this.stopCascadeLoop();
   }
 
   resetMusicBoxes() {
-    this.musicBoxes.forEach((box) => {
-      box.position = box.startRow;
-      if (box.intervalId) {
-        clearInterval(box.intervalId);
-        box.intervalId = null;
+    this.musicBoxes = [];
+    this.columnSpawnAccumulator = 0;
+  }
+
+  initializeColumns() {
+    this.columnWidth = this.musicBarWidth; // fixed 6 cells per column
+    // initialize per-column next spawn timers
+    this.columnNextSpawnMs = Array.from({ length: this.activeColumnCount }, () =>
+      this.spawnMode === "cascade" ? this.poissonIntervalMs() : 0
+    );
+    this.columnSpawnAccumulator = 0;
+  }
+
+  updateGridCellSize() {
+    const wrapper = this.elements.canvasWrapper;
+    const stageSize = wrapper
+      ? Math.min(wrapper.clientHeight, wrapper.clientWidth)
+      : Math.min(window.innerHeight, window.innerWidth);
+    const styles = getComputedStyle(this.elements.grid);
+    const gapVar = styles.getPropertyValue('--grid-gap').trim() || '1px';
+    const gridGap = parseFloat(gapVar) || 1;
+    const cellSize = Math.max(4, (stageSize - (this.gridSize - 1) * gridGap) / this.gridSize);
+    this.elements.grid.style.setProperty('--cell-size', `${cellSize.toFixed(3)}px`);
+  }
+
+  poissonIntervalMs() {
+    const u = Math.random() || Number.EPSILON;
+    const intervalBeats = -Math.log(u) * this.columnNextSpawnMeanBeats;
+    return this.calculateTiming(intervalBeats);
+  }
+
+  startCascadeLoop() {
+    let lastTimestamp = performance.now();
+    const loop = (timestamp) => {
+      if (!this.isMusicRunning) return;
+      const deltaMs = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+      this.updateCascade(deltaMs);
+      this.cascadeFrameId = requestAnimationFrame(loop);
+    };
+    this.cascadeFrameId = requestAnimationFrame(loop);
+  }
+
+  stopCascadeLoop() {
+    if (this.cascadeFrameId !== null) {
+      cancelAnimationFrame(this.cascadeFrameId);
+      this.cascadeFrameId = null;
+    }
+  }
+
+  updateCascade(deltaMs) {
+    const fallStepMs = this.calculateTiming(1);
+    if (this.spawnMode === "scanning") {
+      // spawn a new full row only after previous row completes
+      if (this.musicBoxes.length === 0) {
+        this.spawnFullRow();
       }
-      if (box.timeoutId) {
-        clearTimeout(box.timeoutId);
-        box.timeoutId = null;
+    } else {
+      // cascade: random per-column spawn using Poisson-distributed timers
+      for (let i = 0; i < this.activeColumnCount; i += 1) {
+        this.columnNextSpawnMs[i] -= deltaMs;
+        if (this.columnNextSpawnMs[i] <= 0) {
+          const countInCol = this.musicBoxes.reduce((acc, b) => acc + (b.columnIndex === i ? 1 : 0), 0);
+          if (countInCol < 4) {
+            this.spawnBox(i);
+          }
+          // reset next spawn window using Poisson interval
+          this.columnNextSpawnMs[i] = this.poissonIntervalMs();
+        }
+      }
+    }
+
+    const completedBoxes = [];
+    this.musicBoxes.forEach((box) => {
+      box.elapsed = (box.elapsed || 0) + deltaMs;
+      if (box.elapsed >= fallStepMs) {
+        box.elapsed = 0;
+        this.updateDynamicBox(box);
+        box.row += this.musicBarHeight;
+        if (box.row >= this.gridSize) {
+          completedBoxes.push(box);
+        }
       }
     });
+
+    completedBoxes.forEach((box) => this.removeBox(box));
+  }
+
+  spawnBoxesForColumns() {
+    const currentCounts = Array.from({ length: this.activeColumnCount }, () => 0);
+    this.musicBoxes.forEach((box) => {
+      if (box.columnIndex < this.activeColumnCount) currentCounts[box.columnIndex] += 1;
+    });
+
+    currentCounts.forEach((count, columnIndex) => {
+      if (count >= 4) return;
+      this.spawnBox(columnIndex);
+    });
+  }
+
+  spawnBox(columnIndex) {
+    const box = {
+      columnIndex,
+      row: 0,
+      prevRow: null,
+      elapsed: this.spawnMode === "scanning" ? this.calculateTiming(1) : 0,
+      color: this.pickColumnColor(columnIndex),
+      id: `box-${(this.boxIdCounter += 1)}`
+    };
+    this.musicBoxes.push(box);
+    this.updateDynamicBox(box);
+  }
+
+  pickColumnColor(columnIndex) {
+    const palette = NOTE_COLOR_CLASSES;
+    return palette[columnIndex % palette.length];
+  }
+
+  removeBox(box) {
+    this.musicBoxes = this.musicBoxes.filter((candidate) => candidate !== box);
+    this.clearBoxArea(box, box.prevRow);
+    this.clearBoxArea(box, box.row);
   }
 
   clearMusicHighlights() {
     this.cells.forEach((cell) => {
-      cell.classList.remove(
-        "music-bar",
-        "note1",
-        "note2",
-        "note3",
-        "note4",
-        "note5",
-        "note6",
-        "note7",
-        "note8",
-        "note9",
-        "note10",
-        "note11"
-      );
+      cell.classList.remove("music-bar", ...NOTE_COLOR_CLASSES);
     });
   }
 
-  updateMusicBox(index) {
-    const box = this.musicBoxes[index];
-    this.cells.forEach((cell) => {
-      if (cell.classList.contains(box.color)) {
-        cell.classList.remove("music-bar", box.color);
-      }
-    });
+  updateDynamicBox(box) {
+    if (box.prevRow !== null) {
+      this.clearBoxArea(box, box.prevRow);
+    }
 
-    const startCol = box.column * this.musicBarWidth;
-    const endCol = startCol + this.musicBarWidth;
-    const startRow = box.position;
+    const aliveCount = this.applyBoxArea(box, box.row);
+    box.prevRow = box.row;
+    const selected = this.resolveNoteFromDensity(aliveCount);
+    if (selected) {
+      this.colorBoxArea(box, selected.color);
+    }
+  }
+
+  clearBoxArea(box, startRow) {
+    if (startRow === null || startRow >= this.gridSize) return;
+    const startCol = box.columnIndex * this.columnWidth;
+    const endCol = Math.min(startCol + this.columnWidth, this.gridSize);
+    const endRow = Math.min(startRow + this.musicBarHeight, this.gridSize);
+    for (let row = startRow; row < endRow; row += 1) {
+      for (let col = startCol; col < endCol; col += 1) {
+        const index = row * this.gridSize + col;
+        this.cells[index].classList.remove("music-bar", ...NOTE_COLOR_CLASSES);
+      }
+    }
+  }
+
+  applyBoxArea(box, startRow) {
+    const startCol = box.columnIndex * this.columnWidth;
+    const endCol = Math.min(startCol + this.columnWidth, this.gridSize);
     const endRow = Math.min(startRow + this.musicBarHeight, this.gridSize);
     let aliveCount = 0;
-
     for (let row = startRow; row < endRow; row += 1) {
-      for (let col = startCol; col < Math.min(endCol, this.gridSize); col += 1) {
-        const cellIndex = row * this.gridSize + col;
-        const cell = this.cells[cellIndex];
-        cell.classList.add("music-bar", box.color);
+      for (let col = startCol; col < endCol; col += 1) {
+        const index = row * this.gridSize + col;
+        const cell = this.cells[index];
+        // Neutral highlight until activation
+        cell.classList.add("music-bar");
         if (this.grid[row][col] === 1) {
           aliveCount += 1;
         }
       }
     }
+    return aliveCount;
+  }
 
-    this.playBoxTone(box, aliveCount);
-    box.position += this.musicBarHeight;
-    if (box.position >= this.gridSize) {
-      box.position = 0;
+  colorBoxArea(box, noteColor) {
+    const startCol = box.columnIndex * this.columnWidth;
+    const endCol = Math.min(startCol + this.columnWidth, this.gridSize);
+    const startRow = box.row;
+    const endRow = Math.min(startRow + this.musicBarHeight, this.gridSize);
+    for (let row = startRow; row < endRow; row += 1) {
+      for (let col = startCol; col < endCol; col += 1) {
+        const index = row * this.gridSize + col;
+        const cell = this.cells[index];
+        NOTE_COLOR_CLASSES.forEach((c) => cell.classList.remove(c));
+        cell.classList.add(noteColor);
+      }
     }
   }
 
-  playBoxTone(box, aliveCount) {
-    if (!this.midiOutput || aliveCount === 0) return;
-    const noteIndex = NOTE_CONFIG.findIndex((config) => config.id === box.id);
-    const shouldPlay = aliveCount >= box.threshold;
-    if (!shouldPlay) return;
-
-    const noteVariations = [0, 1, 4, 7, 12];
-    const noteOffset = noteVariations[Math.min(aliveCount - 1, noteVariations.length - 1)];
-    const midiNote = Math.max(0, Math.min(127, box.midiNote + noteOffset));
-
-    let velocity = 64;
-    let duration = 500;
-    if (noteIndex < 7) {
-      velocity = Math.min(127, 60 + aliveCount * 4 + noteIndex * 2);
-      duration = Math.max(200, 800 - noteIndex * 80);
-    } else {
-      velocity = Math.min(127, 70 + aliveCount * 5);
-      duration = Math.max(100, 300 - (noteIndex - 7) * 40);
+  resolveNoteFromDensity(aliveCount) {
+    if (aliveCount <= 0) return null;
+    if (!this.sortedNotesCache) {
+      this.sortedNotesCache = [...NOTE_CONFIG].filter(n => n.active !== false).sort((a, b) => b.threshold - a.threshold);
     }
-
-    this.playMIDINote(midiNote, velocity, duration, box.channel - 1);
+    if (this.sortedNotesCache.length === 0) return null;
+    const candidate = this.sortedNotesCache.find((note) => aliveCount >= note.threshold);
+    const selected = candidate || this.sortedNotesCache[this.sortedNotesCache.length - 1];
+    const duration = this.calculateTiming(selected.durationBeats);
+    const velocity = Math.min(127, 70 + aliveCount * 3);
+    if (this.midiOutput) {
+      this.playMIDINote(selected.midiNote, velocity, duration, selected.channel - 1);
+    }
+    return selected;
   }
 
   calculateTiming(beats) {
@@ -467,63 +672,83 @@ class CellularAutomataApp {
   }
 
   async initializeMIDI() {
+    if (!navigator.requestMIDIAccess) {
+      this.updateMIDIStatus("Web MIDI API not supported in this browser.");
+      return;
+    }
+
     try {
-      if (!navigator.requestMIDIAccess) {
-        throw new Error("Web MIDI API not supported");
-      }
-      this.midiAccess = await navigator.requestMIDIAccess();
+      this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
       this.midiAccess.addEventListener("statechange", () => this.updateMIDIDeviceList());
       this.updateMIDIDeviceList();
     } catch (error) {
       console.warn("MIDI initialization failed", error);
-      this.midiOutput = this.createConsoleMidiOutput();
+      this.midiAccess = null;
+      this.midiOutput = null;
       this.updateMIDIDeviceList();
-      this.updateMIDIStatus("Console MIDI logger active (Web MIDI unavailable)");
+      this.updateMIDIStatus("Unable to initialize Web MIDI. Check browser permissions.");
     }
   }
 
-  createConsoleMidiOutput() {
-    return {
-      name: "Console MIDI Logger",
-      id: "console",
-      send: (message) => {
-        const [status, note, velocity] = message;
-        const isNoteOn = (status & 0xf0) === 0x90;
-        const channel = (status & 0x0f) + 1;
-        const action = isNoteOn ? "Note ON" : "Note OFF";
-        console.log(`${action}: Channel ${channel}, Note ${note}, Velocity ${velocity}`);
-      }
-    };
+  async rescanMIDIDevices() {
+    if (!navigator.requestMIDIAccess) {
+      this.updateMIDIStatus("Web MIDI API not supported in this browser.");
+      return;
+    }
+
+    try {
+      this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+      this.updateMIDIDeviceList();
+      this.updateMIDIStatus("MIDI devices refreshed.");
+    } catch (error) {
+      console.warn("MIDI refresh failed", error);
+      this.updateMIDIStatus("Unable to refresh MIDI devices.");
+    }
   }
 
   updateMIDIDeviceList() {
     const select = this.elements.midiOutputSelect;
     select.innerHTML = "";
 
-    if (this.midiAccess) {
-      const outputs = Array.from(this.midiAccess.outputs.values());
-      if (outputs.length === 0) {
-        const option = new Option("No MIDI outputs", "no-output");
-        select.appendChild(option);
-        this.midiOutput = this.createConsoleMidiOutput();
-      } else {
-        outputs.forEach((output) => {
-          const option = new Option(output.name, output.id);
-          select.appendChild(option);
-        });
-        if (!this.midiOutput || !outputs.find((output) => output.id === this.midiOutput.id)) {
-          this.midiOutput = outputs[0];
-          select.value = outputs[0].id;
-        } else {
-          select.value = this.midiOutput.id;
-        }
-      }
-    } else {
-      const option = new Option("Console MIDI Logger", "console");
+    if (!this.midiAccess) {
+      const option = new Option("Web MIDI unavailable", "unavailable");
+      option.disabled = true;
+      option.selected = true;
       select.appendChild(option);
-      this.midiOutput = this.createConsoleMidiOutput();
+      this.midiOutput = null;
+      this.buildCustomSelectOptions("midiOutputSelect");
+      this.syncCustomSelectLabel("midiOutputSelect");
+      return;
     }
 
+    const outputs = Array.from(this.midiAccess.outputs.values()).filter((output) => output.state === "connected");
+
+    if (outputs.length === 0) {
+      const option = new Option("No MIDI outputs detected", "no-output");
+      option.disabled = true;
+      option.selected = true;
+      select.appendChild(option);
+      this.midiOutput = null;
+      this.preferredMidiOutputId = null;
+      this.buildCustomSelectOptions("midiOutputSelect");
+      this.syncCustomSelectLabel("midiOutputSelect");
+      this.updateMIDIStatus("No MIDI outputs detected. Connect a device and refresh.");
+      return;
+    }
+
+    outputs.forEach((output) => {
+      const option = new Option(output.name, output.id);
+      select.appendChild(option);
+    });
+
+    const preferredId = this.preferredMidiOutputId || this.midiOutput?.id;
+    const matchedOutput = outputs.find((output) => output.id === preferredId) || outputs[0];
+    this.midiOutput = matchedOutput;
+    this.preferredMidiOutputId = matchedOutput.id;
+    select.value = matchedOutput.id;
+
+    this.buildCustomSelectOptions("midiOutputSelect");
+    this.syncCustomSelectLabel("midiOutputSelect");
     if (this.midiOutput) {
       this.updateMIDIStatus(`Connected to "${this.midiOutput.name}"`);
     }
@@ -534,7 +759,9 @@ class CellularAutomataApp {
     const output = Array.from(this.midiAccess.outputs.values()).find((device) => device.id === deviceId);
     if (output) {
       this.midiOutput = output;
+      this.preferredMidiOutputId = output.id;
       this.updateMIDIStatus(`Connected to "${output.name}"`);
+      this.syncCustomSelectLabel("midiOutputSelect");
     }
   }
 
@@ -591,52 +818,160 @@ class CellularAutomataApp {
   renderNoteConfig() {
     const grid = this.elements.noteConfigGrid;
     grid.innerHTML = "";
-    this.musicBoxes.forEach((box, index) => {
-      const card = document.createElement("div");
-      card.className = "note-card glass-panel";
+    NOTE_CONFIG.forEach((note) => {
+      const card = document.createElement('div');
+      card.className = 'note-card glass-panel';
 
-      const header = document.createElement("header");
-      const title = document.createElement("h3");
-      title.textContent = box.label;
-      const chip = document.createElement("span");
-      chip.className = "note-chip";
-      chip.textContent = `Channel ${box.channel}`;
+      const header = document.createElement('header');
+      const title = document.createElement('h3');
+      title.innerHTML = `<span class="note-name ${note.color}">${note.label}</span>`;
+      const chip = document.createElement('span');
+      chip.className = 'note-chip';
+      chip.textContent = `Channel ${note.channel}`;
       header.appendChild(title);
       header.appendChild(chip);
 
-      const beatLabel = document.createElement("label");
-      beatLabel.textContent = "Beats";
-      const beatSelect = document.createElement("select");
-      BEAT_OPTIONS.forEach((option) => {
-        const opt = new Option(option.label, option.value, false, option.value === box.beats);
-        beatSelect.appendChild(opt);
+      const activeLabel = document.createElement('label');
+      activeLabel.textContent = 'Active';
+      const activeToggle = document.createElement('input');
+      activeToggle.type = 'checkbox';
+      activeToggle.checked = note.active !== false;
+      activeToggle.addEventListener('change', (e) => {
+        note.active = e.target.checked;
+        this.sortedNotesCache = null;
       });
-      beatSelect.addEventListener("change", (event) => {
-        box.beats = Number(event.target.value);
-        if (this.isMusicRunning) {
-          this.stopMusic();
-          this.startMusic();
-        }
-      });
+      activeLabel.appendChild(activeToggle);
 
-      const thresholdLabel = document.createElement("label");
-      thresholdLabel.textContent = "Threshold";
-      const thresholdSelect = document.createElement("select");
+      const thresholdLabel = document.createElement('label');
+      thresholdLabel.textContent = 'Trigger threshold';
+      const thresholdSelect = document.createElement('select');
       THRESHOLD_OPTIONS.forEach((value) => {
-        const opt = new Option(`${value} cell${value > 1 ? "s" : ""}`, value, false, value === box.threshold);
+        const opt = new Option(`${value} cell${value > 1 ? 's' : ''}`, value, false, value === note.threshold);
         thresholdSelect.appendChild(opt);
       });
-      thresholdSelect.addEventListener("change", (event) => {
-        box.threshold = Number(event.target.value);
+      thresholdSelect.addEventListener('change', (event) => {
+        note.threshold = Number(event.target.value);
+        this.sortedNotesCache = null;
       });
 
-      beatLabel.appendChild(beatSelect);
+      const durationLabel = document.createElement('label');
+      durationLabel.textContent = 'Note length';
+      const durationSelect = document.createElement('select');
+      BEAT_OPTIONS.forEach((option) => {
+        const opt = new Option(option.label, option.value, false, option.value === note.durationBeats);
+        durationSelect.appendChild(opt);
+      });
+      durationSelect.addEventListener('change', (event) => {
+        note.durationBeats = Number(event.target.value);
+      });
+
       thresholdLabel.appendChild(thresholdSelect);
+      durationLabel.appendChild(durationSelect);
       card.appendChild(header);
-      card.appendChild(beatLabel);
+      card.appendChild(activeLabel);
       card.appendChild(thresholdLabel);
+      card.appendChild(durationLabel);
       grid.appendChild(card);
     });
+  }
+
+  initCustomSelects() {
+    this.registerCustomSelect("ruleSelect");
+    this.registerCustomSelect("midiOutputSelect");
+  }
+
+  registerCustomSelect(selectId) {
+    const select = document.getElementById(selectId);
+    const wrapper = document.querySelector(`[data-select="${selectId}"]`);
+    if (!select || !wrapper) return;
+    const toggle = wrapper.querySelector(".custom-select-toggle");
+    const optionsContainer = wrapper.querySelector(".custom-select-options");
+    if (!toggle || !optionsContainer) return;
+
+    const placeholder = toggle.dataset.placeholder || toggle.textContent.trim();
+    toggle.dataset.placeholder = placeholder;
+
+    this.customSelects.set(selectId, { select, wrapper, toggle, optionsContainer });
+    this.buildCustomSelectOptions(selectId);
+    this.syncCustomSelectLabel(selectId);
+
+    toggle.addEventListener("click", () => this.toggleCustomSelect(selectId));
+    select.addEventListener("change", () => this.syncCustomSelectLabel(selectId));
+  }
+
+  buildCustomSelectOptions(selectId) {
+    const instance = this.customSelects.get(selectId);
+    if (!instance) return;
+    const { select, optionsContainer } = instance;
+    optionsContainer.innerHTML = "";
+    Array.from(select.options).forEach((option) => {
+      const optionDiv = document.createElement("div");
+      optionDiv.className = "custom-select-option";
+      optionDiv.textContent = option.textContent;
+      optionDiv.dataset.value = option.value;
+      optionDiv.setAttribute("role", "option");
+      if (option.value === select.value) {
+        optionDiv.setAttribute("aria-selected", "true");
+      }
+      optionDiv.addEventListener("click", () => this.selectCustomOption(selectId, option.value));
+      optionsContainer.appendChild(optionDiv);
+    });
+  }
+
+  toggleCustomSelect(selectId) {
+    const instance = this.customSelects.get(selectId);
+    if (!instance) return;
+    const isOpen = instance.wrapper.classList.toggle("open");
+    instance.toggle.setAttribute("aria-expanded", String(isOpen));
+    if (isOpen) {
+      this.customSelects.forEach((item, id) => {
+        if (id !== selectId) {
+          item.wrapper.classList.remove("open");
+          item.toggle.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+  }
+
+  closeAllCustomSelects() {
+    this.customSelects.forEach((instance) => {
+      instance.wrapper.classList.remove("open");
+      instance.toggle.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  selectCustomOption(selectId, value) {
+    const instance = this.customSelects.get(selectId);
+    if (!instance) return;
+    const { select } = instance;
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    this.syncCustomSelectLabel(selectId);
+    this.closeAllCustomSelects();
+  }
+
+  syncCustomSelectLabel(selectId) {
+    const instance = this.customSelects.get(selectId);
+    if (!instance) return;
+    const { select, toggle, optionsContainer } = instance;
+    const placeholder = toggle.dataset.placeholder || "Select";
+    const selectedOption = select.options[select.selectedIndex];
+    toggle.textContent = selectedOption ? selectedOption.textContent : placeholder;
+    toggle.dataset.placeholder = placeholder;
+
+    Array.from(optionsContainer.children).forEach((child) => {
+      child.removeAttribute("aria-selected");
+      if (child.dataset.value === select.value) {
+        child.setAttribute("aria-selected", "true");
+      }
+    });
+  }
+
+  handleDocumentClick(event) {
+    const isSelectClick = [...this.customSelects.values()].some(({ wrapper }) => wrapper.contains(event.target));
+    if (!isSelectClick) {
+      this.closeAllCustomSelects();
+    }
   }
 }
 
