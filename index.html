@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cellular Automata MIDI Generator</title>
+    <title>SequenceGoL</title>
     <link rel="stylesheet" href="src/main.css" />
   </head>
   <body>
@@ -14,8 +14,8 @@
       <div class="panel-inner">
         <div class="panel-header">
           <div>
-            <h1>Cellular Automata MIDI Generator</h1>
-            <p class="muted">MIDI-mapped procedural grid using multiple automata rules.</p>
+            <h1>SequenceGoL</h1>
+            <p class="muted">MIDI-mapped procedural grid sequencer using multiple automata rules.</p>
           </div>
           <button class="icon-button" id="panelClose" aria-label="Close controls">×</button>
         </div>
@@ -56,6 +56,31 @@
             <p class="label">Generation</p>
             <p class="value" id="generation">0</p>
           </div>
+
+          <label class="field">
+            <span>Random Fill Amount</span>
+            <div class="field-input bpm-control">
+              <input type="range" id="randomFillSlider" min="5" max="90" value="35" step="5" />
+              <span id="randomFillValue" class="value-chip">35%</span>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Random Pattern</span>
+            <div class="custom-select" data-select="randomFillAlgorithmSelect">
+              <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select pattern</button>
+              <div class="custom-select-options" role="listbox"></div>
+            </div>
+            <select id="randomFillAlgorithmSelect" class="native-select" aria-hidden="true">
+              <option value="uniform" selected>Uniform scatter</option>
+              <option value="clusters">Cluster blooms</option>
+              <option value="noise">Fractal noise</option>
+            </select>
+          </label>
+
+          <div class="button-row random-fill-row">
+            <button id="randomFillBtn" type="button" class="cta outline">Random Fill</button>
+          </div>
         </section>
 
         <section class="panel-section glass-panel">
@@ -78,19 +103,21 @@
           <label class="field">
             <span>Active Columns</span>
             <div class="field-input bpm-control">
-              <input type="range" id="columnSlider" min="4" max="16" value="11" step="1" />
-              <input type="number" id="columnInput" min="4" max="16" value="11" step="1" />
-              <span id="columnValue" class="value-chip">11 Columns</span>
+              <input type="range" id="columnSlider" min="4" max="16" value="8" step="1" />
+              <input type="number" id="columnInput" min="4" max="16" value="8" step="1" />
+              <span id="columnValue" class="value-chip">8 Columns</span>
             </div>
           </label>
           <label class="field">
             <span>Spawn Mode</span>
-            <div class="field-input">
-              <select id="spawnModeSelect">
-                <option value="cascade" selected>Cascade</option>
-                <option value="scanning">Scanning</option>
-              </select>
+            <div class="custom-select" data-select="spawnModeSelect">
+              <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select mode</button>
+              <div class="custom-select-options" role="listbox"></div>
             </div>
+            <select id="spawnModeSelect" class="native-select" aria-hidden="true">
+              <option value="cascade" selected>Cascade</option>
+              <option value="scanning">Scanning</option>
+            </select>
           </label>
           <label class="field">
             <span>Spawn Probability</span>
@@ -157,7 +184,65 @@
           </div>
           <button class="icon-button" data-overlay-close="noteConfigOverlay" aria-label="Close note configuration">×</button>
         </header>
-        <div id="noteConfigGrid" class="note-grid"></div>
+        <div class="overlay-body">
+          <section class="key-presets">
+            <header class="section-heading compact">
+              <h3>Key Presets</h3>
+              <span class="badge accent" id="currentScaleLabel">A Phrygian Dominant</span>
+            </header>
+            <div class="key-presets-controls">
+              <label class="field">
+                <span>Tonic Note</span>
+                <div class="custom-select" data-select="keyTonicSelect">
+                  <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select tonic</button>
+                  <div class="custom-select-options" role="listbox"></div>
+                </div>
+                <select id="keyTonicSelect" class="native-select" aria-hidden="true">
+                  <option value="C">C</option>
+                  <option value="C#">C♯ / D♭</option>
+                  <option value="D">D</option>
+                  <option value="D#">D♯ / E♭</option>
+                  <option value="E">E</option>
+                  <option value="F">F</option>
+                  <option value="F#">F♯ / G♭</option>
+                  <option value="G">G</option>
+                  <option value="G#">G♯ / A♭</option>
+                  <option value="A" selected>A</option>
+                  <option value="A#">A♯ / B♭</option>
+                  <option value="B">B</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Scale Type</span>
+                <div class="custom-select" data-select="keyScaleSelect">
+                  <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Select scale</button>
+                  <div class="custom-select-options" role="listbox"></div>
+                </div>
+                <select id="keyScaleSelect" class="native-select" aria-hidden="true">
+                  <option value="major">Ionian (Major)</option>
+                  <option value="dorian">Dorian</option>
+                  <option value="phrygian">Phrygian</option>
+                  <option value="lydian">Lydian</option>
+                  <option value="mixolydian">Mixolydian</option>
+                  <option value="minor">Aeolian (Natural Minor)</option>
+                  <option value="locrian">Locrian</option>
+                  <option value="harmonic_minor">Harmonic Minor</option>
+                  <option value="phrygian_dominant" selected>Phrygian Dominant</option>
+                  <option value="whole_tone">Whole Tone</option>
+                  <option value="chromatic">Chromatic</option>
+                </select>
+              </label>
+
+              <div class="key-presets-actions">
+                <button id="applyKeyPresetBtn" class="cta">Apply Preset</button>
+                <button id="randomizeKeyPresetBtn" class="cta ghost">Randomize</button>
+              </div>
+            </div>
+          </section>
+
+          <div id="noteConfigGrid" class="note-grid"></div>
+        </div>
       </div>
     </section>
 

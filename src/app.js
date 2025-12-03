@@ -27,12 +27,28 @@ const BEAT_OPTIONS = [
 
 const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
+const SCALE_LIBRARY = {
+  major: { label: "Ionian (Major)", intervals: [0, 2, 4, 5, 7, 9, 11] },
+  dorian: { label: "Dorian", intervals: [0, 2, 3, 5, 7, 9, 10] },
+  phrygian: { label: "Phrygian", intervals: [0, 1, 3, 5, 7, 8, 10] },
+  lydian: { label: "Lydian", intervals: [0, 2, 4, 6, 7, 9, 11] },
+  mixolydian: { label: "Mixolydian", intervals: [0, 2, 4, 5, 7, 9, 10] },
+  minor: { label: "Aeolian (Natural Minor)", intervals: [0, 2, 3, 5, 7, 8, 10] },
+  locrian: { label: "Locrian", intervals: [0, 1, 3, 5, 6, 8, 10] },
+  harmonic_minor: { label: "Harmonic Minor", intervals: [0, 2, 3, 5, 7, 8, 11] },
+  phrygian_dominant: { label: "Phrygian Dominant", intervals: [0, 1, 4, 5, 7, 8, 10] },
+  whole_tone: { label: "Whole Tone", intervals: [0, 2, 4, 6, 8, 10] },
+  chromatic: { label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }
+};
+
+const TONIC_OPTIONS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
 class CellularAutomataApp {
   constructor() {
     this.musicBarHeight = 6;
     this.musicBarWidth = 6;
     this.maxColumns = 16;
-    this.activeColumnCount = 11;
+    this.activeColumnCount = 8;
     this.gridSize = this.musicBarWidth * this.activeColumnCount;
     this.grid = this.createMatrix();
     this.nextGrid = this.createMatrix();
@@ -50,6 +66,10 @@ class CellularAutomataApp {
     this.columnNextSpawnMs = [];
     this.columnNextSpawnMeanBeats = 1;
     this.spawnRateFactor = 1; // 1x default
+    this.randomFillPercent = 0.35; // 35%
+    this.randomFillAlgorithm = "uniform";
+    this.keyTonic = "A";
+    this.keyScale = "phrygian_dominant";
 
     this.isMouseDown = false;
     this.isRightClick = false;
@@ -76,6 +96,85 @@ class CellularAutomataApp {
     }
   }
 
+  applyRandomFill() {
+    const totalCells = this.gridSize * this.gridSize;
+    if (totalCells === 0) return;
+    const targetCount = Math.max(1, Math.floor(totalCells * this.randomFillPercent));
+    const positions = this.buildRandomFillPositions(targetCount);
+    const newGrid = this.createMatrix();
+    positions.forEach(([row, col]) => {
+      newGrid[row][col] = 1;
+    });
+    this.grid = newGrid;
+    this.nextGrid = this.createMatrix();
+    this.renderGrid();
+    this.elements.generation.textContent = "0";
+  }
+
+  buildRandomFillPositions(targetCount) {
+    switch (this.randomFillAlgorithm) {
+      case "clusters":
+        return this.generateClusterFill(targetCount);
+      case "noise":
+        return this.generateNoiseFill(targetCount);
+      case "uniform":
+      default:
+        return this.generateUniformFill(targetCount);
+    }
+  }
+
+  generateUniformFill(targetCount) {
+    const totalCells = this.gridSize * this.gridSize;
+    const indices = Array.from({ length: totalCells }, (_, index) => index);
+    for (let i = indices.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const selection = indices.slice(0, targetCount);
+    return selection.map((index) => [Math.floor(index / this.gridSize), index % this.gridSize]);
+  }
+
+  generateClusterFill(targetCount) {
+    const selected = new Set();
+    const maxIndex = this.gridSize - 1;
+    const addCell = (row, col) => {
+      selected.add(row * this.gridSize + col);
+    };
+
+    while (selected.size < targetCount) {
+      let currentRow = Math.floor(Math.random() * this.gridSize);
+      let currentCol = Math.floor(Math.random() * this.gridSize);
+      addCell(currentRow, currentCol);
+      const clusterSize = Math.max(6, Math.floor(targetCount / 8));
+      for (let i = 0; i < clusterSize && selected.size < targetCount; i += 1) {
+        currentRow = Math.min(maxIndex, Math.max(0, currentRow + (Math.floor(Math.random() * 5) - 2)));
+        currentCol = Math.min(maxIndex, Math.max(0, currentCol + (Math.floor(Math.random() * 5) - 2)));
+        addCell(currentRow, currentCol);
+      }
+    }
+
+    return Array.from(selected).map((index) => [Math.floor(index / this.gridSize), index % this.gridSize]);
+  }
+
+  generateNoiseFill(targetCount) {
+    const seedX = Math.random() * 1000;
+    const seedY = Math.random() * 1000;
+    const freq = 0.05 + this.randomFillPercent * 0.35;
+    const noiseBuckets = [];
+    for (let row = 0; row < this.gridSize; row += 1) {
+      for (let col = 0; col < this.gridSize; col += 1) {
+        const combined = Math.sin((row + seedX) * freq) + Math.cos((col + seedY) * (freq * 0.9));
+        const diagonal = Math.sin((row + col + seedX - seedY) * freq * 0.5);
+        const jitter = Math.random() * 0.35;
+        const value = combined + diagonal + jitter;
+        const index = row * this.gridSize + col;
+        noiseBuckets.push({ index, value });
+      }
+    }
+    noiseBuckets.sort((a, b) => b.value - a.value);
+    return noiseBuckets.slice(0, targetCount).map(({ index }) => [Math.floor(index / this.gridSize), index % this.gridSize]);
+  }
+
   cacheElements() {
     this.elements = {
       grid: document.getElementById("grid"),
@@ -99,6 +198,15 @@ class CellularAutomataApp {
       spawnRateInput: document.getElementById("spawnRateInput"),
       spawnRateValue: document.getElementById("spawnRateValue"),
       spawnModeSelect: document.getElementById("spawnModeSelect"),
+      randomFillSlider: document.getElementById("randomFillSlider"),
+      randomFillValue: document.getElementById("randomFillValue"),
+      randomFillAlgorithmSelect: document.getElementById("randomFillAlgorithmSelect"),
+      randomFillBtn: document.getElementById("randomFillBtn"),
+      keyTonicSelect: document.getElementById("keyTonicSelect"),
+      keyScaleSelect: document.getElementById("keyScaleSelect"),
+      currentScaleLabel: document.getElementById("currentScaleLabel"),
+      applyKeyPresetBtn: document.getElementById("applyKeyPresetBtn"),
+      randomizeKeyPresetBtn: document.getElementById("randomizeKeyPresetBtn"),
       midiOutputSelect: document.getElementById("midiOutputSelect"),
       refreshMidiBtn: document.getElementById("refreshMidiBtn"),
       midiStatusText: document.getElementById("midiStatusText"),
@@ -154,6 +262,15 @@ class CellularAutomataApp {
       spawnRateInput,
       spawnRateValue,
       spawnModeSelect,
+      randomFillSlider,
+      randomFillValue,
+      randomFillAlgorithmSelect,
+      randomFillBtn,
+      keyTonicSelect,
+      keyScaleSelect,
+      currentScaleLabel,
+      applyKeyPresetBtn,
+      randomizeKeyPresetBtn,
       midiOutputSelect,
       refreshMidiBtn,
       panelToggle,
@@ -244,6 +361,34 @@ class CellularAutomataApp {
         this.startMusic();
       }
     });
+
+    const handleRandomFillAmountChange = (value) => {
+      const numeric = Math.min(90, Math.max(5, Number(value) || 35));
+      this.randomFillPercent = numeric / 100;
+      randomFillSlider.value = String(numeric);
+      randomFillValue.textContent = `${numeric}%`;
+    };
+
+    randomFillSlider.addEventListener("input", (event) => handleRandomFillAmountChange(event.target.value));
+
+    randomFillAlgorithmSelect.addEventListener("change", (event) => {
+      this.randomFillAlgorithm = event.target.value;
+    });
+
+    randomFillBtn.addEventListener("click", () => this.applyRandomFill());
+
+    keyTonicSelect.addEventListener("change", (event) => {
+      this.keyTonic = event.target.value;
+      this.updateCurrentScaleLabel();
+    });
+
+    keyScaleSelect.addEventListener("change", (event) => {
+      this.keyScale = event.target.value;
+      this.updateCurrentScaleLabel();
+    });
+
+    applyKeyPresetBtn.addEventListener("click", () => this.applyKeyPreset());
+    randomizeKeyPresetBtn.addEventListener("click", () => this.randomizeKeyPreset());
 
     midiOutputSelect.addEventListener("change", (event) => this.selectMIDIDevice(event.target.value));
     refreshMidiBtn.addEventListener("click", () => this.rescanMIDIDevices());
@@ -875,9 +1020,47 @@ class CellularAutomataApp {
     });
   }
 
+  updateCurrentScaleLabel() {
+    const label = SCALE_LIBRARY[this.keyScale]?.label || "Custom";
+    if (this.elements.currentScaleLabel) {
+      this.elements.currentScaleLabel.textContent = `${this.keyTonic} ${label}`;
+    }
+  }
+
+  applyKeyPreset() {
+    const tonicIndex = TONIC_OPTIONS.indexOf(this.keyTonic);
+    if (tonicIndex === -1) return;
+    const intervals = SCALE_LIBRARY[this.keyScale]?.intervals || SCALE_LIBRARY.major.intervals;
+    const midiNotes = intervals.map((interval) => (tonicIndex * 1 + interval) % 12);
+    NOTE_CONFIG.forEach((note, idx) => {
+      const degree = midiNotes[idx % midiNotes.length];
+      note.midiNote = 36 + degree + Math.floor(idx / midiNotes.length) * 12;
+    });
+    this.sortedNotesCache = null;
+    this.renderNoteConfig();
+    this.updateCurrentScaleLabel();
+  }
+
+  randomizeKeyPreset() {
+    const randomTonic = TONIC_OPTIONS[Math.floor(Math.random() * TONIC_OPTIONS.length)];
+    const scaleKeys = Object.keys(SCALE_LIBRARY);
+    const randomScale = scaleKeys[Math.floor(Math.random() * scaleKeys.length)];
+    this.keyTonic = randomTonic;
+    this.keyScale = randomScale;
+    this.elements.keyTonicSelect.value = randomTonic;
+    this.elements.keyScaleSelect.value = randomScale;
+    this.syncCustomSelectLabel("keyTonicSelect");
+    this.syncCustomSelectLabel("keyScaleSelect");
+    this.applyKeyPreset();
+  }
+
   initCustomSelects() {
     this.registerCustomSelect("ruleSelect");
     this.registerCustomSelect("midiOutputSelect");
+    this.registerCustomSelect("spawnModeSelect");
+    this.registerCustomSelect("randomFillAlgorithmSelect");
+    this.registerCustomSelect("keyTonicSelect");
+    this.registerCustomSelect("keyScaleSelect");
   }
 
   registerCustomSelect(selectId) {

@@ -23,6 +23,8 @@ html,
 body {
   height: 100vh;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 body {
@@ -35,6 +37,15 @@ body {
   align-items: stretch;
   font-size: 14px;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
+}
+
+.bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -10 !important;
+  pointer-events: none;
 }
 
 .stage {
@@ -45,7 +56,7 @@ body {
   padding: 0;
   min-height: 100vh;
   position: relative;
-  z-index: 1;
+  z-index: 5;
 }
 
 .canvas-wrapper {
@@ -60,13 +71,15 @@ body {
   justify-content: center;
   align-items: center;
   aspect-ratio: 1 / 1;
+  position: relative;
+  z-index: 6;
 }
 
 .canvas-wrapper.glass-panel {
-  background: transparent;
+  background: rgba(8, 8, 8, 0.7);
   border: none;
   box-shadow: none;
-  backdrop-filter: none;
+  backdrop-filter: blur(1px);
 }
 
 .grid {
@@ -78,6 +91,8 @@ body {
   border: none;
   padding: 0;
   cursor: crosshair;
+  position: relative;
+  z-index: 10;
 }
 
 .cell {
@@ -252,6 +267,11 @@ body {
   align-items: flex-start;
 }
 
+.random-fill-row {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
 .panel-section {
   padding: 20px;
   border: 1px solid var(--panel-border);
@@ -337,12 +357,14 @@ body {
   gap: 6px;
   margin-bottom: 16px;
   font-size: 13px;
+  justify-content: space-between;
 }
 
 .field-input {
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-content: space-between;
 }
 
 .field input,
@@ -436,12 +458,19 @@ body {
   padding: 0;
 }
 
+.field input[type="number"] {
+  flex: 0 0 80px;
+  text-align: center;
+}
+
 .value-chip {
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   padding: 4px 10px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .midi-select select {
@@ -512,6 +541,41 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
+}
+
+.note-config .overlay-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.key-presets {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 16px;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.key-presets .section-heading.compact {
+  margin-bottom: 12px;
+}
+
+.key-presets-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.key-presets .field {
+  margin-bottom: 0;
+}
+
+.key-presets-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .note-card {
