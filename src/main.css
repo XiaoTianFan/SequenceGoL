@@ -547,6 +547,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .key-presets {

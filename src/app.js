@@ -27,6 +27,23 @@ const BEAT_OPTIONS = [
 
 const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
+const NOTE_NAME_TO_SEMITONE = {
+  C: 0,
+  "C#": 1,
+  D: 2,
+  "D#": 3,
+  E: 4,
+  F: 5,
+  "F#": 6,
+  G: 7,
+  "G#": 8,
+  A: 9,
+  "A#": 10,
+  B: 11
+};
+
+const SEMITONE_TO_NOTE_NAME = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
 const SCALE_LIBRARY = {
   major: { label: "Ionian (Major)", intervals: [0, 2, 4, 5, 7, 9, 11] },
   dorian: { label: "Dorian", intervals: [0, 2, 3, 5, 7, 9, 10] },
@@ -84,6 +101,7 @@ class CellularAutomataApp {
     this.initCustomSelects();
     this.buildGrid();
     this.attachEventListeners();
+    this.applyKeyPreset({ skipRender: true });
     this.renderNoteConfig();
     this.initializeMIDI();
   }
@@ -205,7 +223,6 @@ class CellularAutomataApp {
       keyTonicSelect: document.getElementById("keyTonicSelect"),
       keyScaleSelect: document.getElementById("keyScaleSelect"),
       currentScaleLabel: document.getElementById("currentScaleLabel"),
-      applyKeyPresetBtn: document.getElementById("applyKeyPresetBtn"),
       randomizeKeyPresetBtn: document.getElementById("randomizeKeyPresetBtn"),
       midiOutputSelect: document.getElementById("midiOutputSelect"),
       refreshMidiBtn: document.getElementById("refreshMidiBtn"),
@@ -269,7 +286,6 @@ class CellularAutomataApp {
       keyTonicSelect,
       keyScaleSelect,
       currentScaleLabel,
-      applyKeyPresetBtn,
       randomizeKeyPresetBtn,
       midiOutputSelect,
       refreshMidiBtn,
@@ -379,15 +395,14 @@ class CellularAutomataApp {
 
     keyTonicSelect.addEventListener("change", (event) => {
       this.keyTonic = event.target.value;
-      this.updateCurrentScaleLabel();
+      this.applyKeyPreset();
     });
 
     keyScaleSelect.addEventListener("change", (event) => {
       this.keyScale = event.target.value;
-      this.updateCurrentScaleLabel();
+      this.applyKeyPreset();
     });
 
-    applyKeyPresetBtn.addEventListener("click", () => this.applyKeyPreset());
     randomizeKeyPresetBtn.addEventListener("click", () => this.randomizeKeyPreset());
 
     midiOutputSelect.addEventListener("change", (event) => this.selectMIDIDevice(event.target.value));
@@ -1027,17 +1042,23 @@ class CellularAutomataApp {
     }
   }
 
-  applyKeyPreset() {
+  applyKeyPreset(options = {}) {
+    const { skipRender = false } = options;
     const tonicIndex = TONIC_OPTIONS.indexOf(this.keyTonic);
     if (tonicIndex === -1) return;
     const intervals = SCALE_LIBRARY[this.keyScale]?.intervals || SCALE_LIBRARY.major.intervals;
-    const midiNotes = intervals.map((interval) => (tonicIndex * 1 + interval) % 12);
-    NOTE_CONFIG.forEach((note, idx) => {
-      const degree = midiNotes[idx % midiNotes.length];
-      note.midiNote = 36 + degree + Math.floor(idx / midiNotes.length) * 12;
+    const tonicSemitone = NOTE_NAME_TO_SEMITONE[this.keyTonic] ?? 0;
+    const allowedSemitones = new Set(intervals.map((interval) => (tonicSemitone + interval + 12) % 12));
+
+    NOTE_CONFIG.forEach((note) => {
+      const noteSemitone = NOTE_NAME_TO_SEMITONE[note.label] ?? NOTE_NAME_TO_SEMITONE.A;
+      note.active = allowedSemitones.has(noteSemitone);
+      note.midiNote = 36 + noteSemitone;
     });
     this.sortedNotesCache = null;
-    this.renderNoteConfig();
+    if (!skipRender) {
+      this.renderNoteConfig();
+    }
     this.updateCurrentScaleLabel();
   }
 
