@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cellular Automata MIDI Generator</title>
+    <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+    <button class="panel-toggle" id="panelToggle" aria-controls="controlPanel" aria-expanded="false">Controls</button>
+    <button class="about-toggle" id="aboutToggle" aria-haspopup="dialog" aria-controls="aboutOverlay">About</button>
+
+    <aside class="control-panel" id="controlPanel" aria-label="Simulation and music controls">
+        <div class="panel-inner">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">Material Atlas Lab</p>
+                    <h1>Cellular Automata MIDI Generator</h1>
+                    <p class="muted">MIDI-mapped procedural grid using multiple automata rules.</p>
+                </div>
+                <button class="icon-button" id="panelClose" aria-label="Close controls">×</button>
+            </div>
+
+            <section class="panel-section glass-panel">
+                <header class="section-heading">
+                    <h2>Simulation</h2>
+                    <span class="badge">Live</span>
+                </header>
+                <div class="button-row">
+                    <button id="startBtn" class="cta">Start</button>
+                    <button id="stopBtn" class="cta ghost" disabled>Stop</button>
+                    <button id="clearBtn" class="cta warning">Clear</button>
+                </div>
+                <label class="field">
+                    <span>Simulation BPM</span>
+                    <div class="field-input">
+                        <input type="number" id="simBpmInput" min="30" max="600" value="75" step="5" />
+                        <span id="simBpmValue" class="value-chip">75 BPM</span>
+                    </div>
+                </label>
+                <label class="field">
+                    <span>Rule Set</span>
+                    <select id="ruleSelect">
+                        <option value="conway">Conway's Game of Life</option>
+                        <option value="highlife">HighLife</option>
+                        <option value="seeds">Seeds</option>
+                        <option value="starwars">Star Wars</option>
+                        <option value="briansbrain">Brian's Brain</option>
+                        <option value="diamoeba">Diamoeba</option>
+                    </select>
+                </label>
+                <div class="generation-display">
+                    <p class="label">Generation</p>
+                    <p class="value" id="generation">0</p>
+                </div>
+            </section>
+
+            <section class="panel-section glass-panel">
+                <header class="section-heading">
+                    <h2>Music</h2>
+                    <span class="badge accent">A Phrygian Dominant</span>
+                </header>
+                <div class="button-row">
+                    <button id="musicStartBtn" class="cta">Start Music</button>
+                    <button id="musicStopBtn" class="cta ghost" disabled>Stop Music</button>
+                </div>
+                <label class="field">
+                    <span>Music BPM</span>
+                    <div class="field-input bpm-control">
+                        <input type="range" id="bpmSlider" min="60" max="200" value="75" step="5" />
+                        <input type="number" id="bpmInput" min="30" max="300" value="75" step="1" />
+                        <span id="bpmValue" class="value-chip">75 BPM</span>
+                    </div>
+                </label>
+                <label class="field">
+                    <span>MIDI Output</span>
+                    <div class="field-input midi-select">
+                        <select id="midiOutputSelect">
+                            <option>Loading...</option>
+                        </select>
+                        <button id="refreshMidiBtn" class="icon-button" aria-label="Refresh MIDI devices">↻</button>
+                    </div>
+                </label>
+                <button id="noteConfigBtn" class="cta outline">Note timing & thresholds</button>
+            </section>
+
+            <section class="panel-section glass-panel" id="midiStatus" aria-live="polite">
+                <header class="section-heading">
+                    <h2>MIDI Status</h2>
+                </header>
+                <p class="muted" id="midiStatusText">Initializing Web MIDI...</p>
+            </section>
+        </div>
+    </aside>
+
+    <main class="stage" aria-live="polite">
+        <div class="canvas-wrapper glass-panel" aria-label="Cellular automata grid">
+            <div id="grid" class="grid"></div>
+        </div>
+    </main>
+
+    <section class="overlay" id="aboutOverlay" aria-hidden="true" role="dialog" aria-labelledby="aboutTitle">
+        <div class="overlay-content glass-panel">
+            <header class="overlay-header">
+                <div>
+                    <p class="eyebrow">Systems Brief</p>
+                    <h2 id="aboutTitle">About the Canvas</h2>
+                </div>
+                <button class="icon-button" data-overlay-close="aboutOverlay" aria-label="Close about panel">×</button>
+            </header>
+            <div class="overlay-body">
+                <p>Left click and drag to seed living cells. Right click scrubs cells back to stasis. Multiple automata rules are supported: Conway's B3/S23, HighLife B36/S23, Seeds B2/S, Star Wars B2/S345, Brian's Brain (three-state), and Diamoeba B35678/S5678.</p>
+                <p>The MIDI engine scans eleven stacked 8×8 sectors, mapped to an A Phrygian Dominant scale across channels 1–11. Music BPM and beat lengths are independent from simulation tempo, allowing polyrhythmic drift.</p>
+                <p>Route the Web MIDI output into any DAW or hardware synth to hear evolving harmonies. All surfaces follow the Material Atlas glassmorphism spec—sharp edges, high contrast, and responsive micro-interactions.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="overlay" id="noteConfigOverlay" aria-hidden="true" role="dialog" aria-labelledby="noteConfigTitle">
+        <div class="overlay-content glass-panel note-config">
+            <header class="overlay-header">
+                <div>
+                    <p class="eyebrow">Music Layers</p>
+                    <h2 id="noteConfigTitle">Note timing & activation thresholds</h2>
+                </div>
+                <button class="icon-button" data-overlay-close="noteConfigOverlay" aria-label="Close note configuration">×</button>
+            </header>
+            <div id="noteConfigGrid" class="note-grid"></div>
+        </div>
+    </section>
+
+    <script src="scripts/app.js" type="module"></script>
+</body>
+</html>
