@@ -1126,9 +1126,10 @@ class CellularAutomataApp {
     const selected = candidate || this.sortedNotesCache[this.sortedNotesCache.length - 1];
     const duration = this.calculateTiming(selected.durationBeats);
     const velocity = Math.min(127, 70 + aliveCount * 3);
-    if (this.midiOutput) {
-      this.playMIDINote(selected.midiNote, velocity, duration, selected.channel - 1);
-    }
+
+    // Unconditional log for debugging as requested
+    this.playMIDINote(selected.midiNote, velocity, duration, selected.channel - 1);
+
     return selected;
   }
 
@@ -1286,20 +1287,32 @@ class CellularAutomataApp {
     this.elements.midiStatusText.textContent = message;
   }
 
-  playMIDINote(note, velocity, duration, channel) {
-    console.log(`Triggering Note: Pitch=${note} (${this.getNoteNameFromMidi(note)}), Vel=${velocity}, Dur=${duration}ms, Ch=${channel}`);
+  playMIDINote(note, velocity, duration, originalChannel) {
+    // Force Channel 1 (index 0) for all notes as requested
+    const channel = 0;
+
+    // console.log(`Triggering Note: Pitch=${note} (${this.getNoteNameFromMidi(note)}), Vel=${velocity}, Dur=${duration}ms, Ch=${channel + 1}`);
     if (!this.midiOutput) return;
+
     const key = `${channel}-${note}`;
+
+    // Polyphony Improvement:
+    // If note is already playing, we extend it (legato) instead of cutting it off.
+    // We clear the previous 'off' timer, so it doesn't stop prematurely.
+    // We generally DO NOT send a NoteOff before the new NoteOn to avoid gaps.
+    // Most synths will treat a new NoteOn for the same pitch as a re-trigger or voice steal.
     if (this.activeNotes.has(key)) {
       clearTimeout(this.activeNotes.get(key));
-      this.sendNoteOff(note, channel);
+      // removed: this.sendNoteOff(note, channel); 
     }
 
     this.sendNoteOn(note, velocity, channel);
+
     const timeoutId = setTimeout(() => {
       this.sendNoteOff(note, channel);
       this.activeNotes.delete(key);
     }, duration);
+
     this.activeNotes.set(key, timeoutId);
   }
 
