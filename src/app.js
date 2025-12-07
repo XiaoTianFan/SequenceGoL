@@ -318,8 +318,7 @@ class CellularAutomataApp {
       this.simBpm = Number(event.target.value) || 60;
       this.updateSimBpmDisplay();
       if (this.isRunning) {
-        this.stop();
-        this.start();
+        this.refreshSimulationTempo();
       }
     });
 
@@ -328,13 +327,13 @@ class CellularAutomataApp {
 
     const handleBpmChange = (value) => {
       const sanitized = Math.min(300, Math.max(30, Number(value) || 75));
+      const previousMsPerBeat = 60000 / this.bpm;
       this.bpm = sanitized;
       bpmSlider.value = String(sanitized);
       bpmInput.value = String(sanitized);
       this.elements.bpmValue.textContent = `${sanitized} BPM`;
       if (this.isMusicRunning) {
-        this.stopMusic();
-        this.startMusic();
+        this.applyLiveMusicTempoChange(previousMsPerBeat, 60000 / this.bpm);
       }
     };
 
@@ -521,8 +520,7 @@ class CellularAutomataApp {
     this.isRunning = true;
     this.elements.startBtn.disabled = true;
     this.elements.stopBtn.disabled = false;
-    const interval = this.calculateSimulationTiming();
-    this.simIntervalId = setInterval(() => this.updateGrid(), interval);
+    this.scheduleSimulationTick();
   }
 
   stop() {
@@ -531,6 +529,18 @@ class CellularAutomataApp {
     this.elements.startBtn.disabled = false;
     this.elements.stopBtn.disabled = true;
     clearInterval(this.simIntervalId);
+    this.simIntervalId = null;
+  }
+
+  scheduleSimulationTick() {
+    clearInterval(this.simIntervalId);
+    const interval = this.calculateSimulationTiming();
+    this.simIntervalId = setInterval(() => this.updateGrid(), interval);
+  }
+
+  refreshSimulationTempo() {
+    if (!this.isRunning) return;
+    this.scheduleSimulationTick();
   }
 
   clear() {
@@ -1037,6 +1047,34 @@ class CellularAutomataApp {
 
   calculateTiming(beats) {
     return (60000 / this.bpm) * beats;
+  }
+
+  applyLiveMusicTempoChange(previousMsPerBeat, newMsPerBeat) {
+    if (!this.isMusicRunning) return;
+    if (
+      !Number.isFinite(previousMsPerBeat) ||
+      previousMsPerBeat <= 0 ||
+      !Number.isFinite(newMsPerBeat) ||
+      newMsPerBeat <= 0
+    ) {
+      return;
+    }
+    const scale = newMsPerBeat / previousMsPerBeat;
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    if (Array.isArray(this.columnNextSpawnMs) && this.columnNextSpawnMs.length > 0) {
+      this.columnNextSpawnMs = this.columnNextSpawnMs.map((timeout) => timeout * scale);
+    }
+
+    this.musicBoxes.forEach((box) => {
+      if (typeof box.elapsed === "number") {
+        box.elapsed *= scale;
+      }
+    });
+
+    if (typeof this.sequencerElapsed === "number") {
+      this.sequencerElapsed *= scale;
+    }
   }
 
   stopAllMIDINotes() {
