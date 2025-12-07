@@ -89,6 +89,10 @@ class CellularAutomataApp {
     this.cascadeFrameId = null;
     this.columnSpawnAccumulator = 0;
     this.spawnMode = "cascade";
+
+    this.minOctave = 4;
+    this.maxOctave = 4;
+
     this.columnNextSpawnMs = [];
     this.columnNextSpawnMeanBeats = 1;
     this.spawnRateFactor = 1; // 1x default
@@ -244,6 +248,8 @@ class CellularAutomataApp {
       randomFillBtn: document.getElementById("randomFillBtn"),
       keyTonicSelect: document.getElementById("keyTonicSelect"),
       keyScaleSelect: document.getElementById("keyScaleSelect"),
+      minOctaveSelect: document.getElementById("minOctaveSelect"),
+      maxOctaveSelect: document.getElementById("maxOctaveSelect"),
       currentScaleLabel: document.getElementById("currentScaleLabel"),
       randomizeKeyPresetBtn: document.getElementById("randomizeKeyPresetBtn"),
       midiOutputSelect: document.getElementById("midiOutputSelect"),
@@ -312,6 +318,8 @@ class CellularAutomataApp {
       randomFillBtn,
       keyTonicSelect,
       keyScaleSelect,
+      minOctaveSelect,
+      maxOctaveSelect,
       currentScaleLabel,
       randomizeKeyPresetBtn,
       midiOutputSelect,
@@ -472,6 +480,16 @@ class CellularAutomataApp {
 
     keyScaleSelect.addEventListener("change", (event) => {
       this.keyScale = event.target.value;
+      this.applyKeyPreset();
+    });
+
+    minOctaveSelect.addEventListener("change", (event) => {
+      this.minOctave = Number(event.target.value);
+      this.applyKeyPreset();
+    });
+
+    maxOctaveSelect.addEventListener("change", (event) => {
+      this.maxOctave = Number(event.target.value);
       this.applyKeyPreset();
     });
 
@@ -1269,6 +1287,7 @@ class CellularAutomataApp {
   }
 
   playMIDINote(note, velocity, duration, channel) {
+    console.log(`Triggering Note: Pitch=${note} (${this.getNoteNameFromMidi(note)}), Vel=${velocity}, Dur=${duration}ms, Ch=${channel}`);
     if (!this.midiOutput) return;
     const key = `${channel}-${note}`;
     if (this.activeNotes.has(key)) {
@@ -1325,6 +1344,7 @@ class CellularAutomataApp {
       const header = document.createElement('header');
       const title = document.createElement('h3');
       title.innerHTML = `<span class="note-name ${note.color}">${note.label}</span>`;
+      // title.innerHTML = `<span class="note-name ${note.color}">${note.label}</span>`; // Modified to ensure label is updated
       const chip = document.createElement('span');
       chip.className = 'note-chip';
       chip.textContent = `Channel ${note.channel}`;
@@ -1412,17 +1432,57 @@ class CellularAutomataApp {
 
   applyKeyPreset(options = {}) {
     const { skipRender = false } = options;
-    const tonicIndex = TONIC_OPTIONS.indexOf(this.keyTonic);
-    if (tonicIndex === -1) return;
     const intervals = SCALE_LIBRARY[this.keyScale]?.intervals || SCALE_LIBRARY.major.intervals;
     const tonicSemitone = NOTE_NAME_TO_SEMITONE[this.keyTonic] ?? 0;
-    const allowedSemitones = new Set(intervals.map((interval) => (tonicSemitone + interval + 12) % 12));
 
-    NOTE_CONFIG.forEach((note) => {
-      const noteSemitone = NOTE_NAME_TO_SEMITONE[note.label] ?? NOTE_NAME_TO_SEMITONE.A;
-      note.active = allowedSemitones.has(noteSemitone);
-      note.midiNote = 36 + noteSemitone;
+    // Generate all valid notes in the range
+    const validMidiNotes = [];
+    const minMidi = (this.minOctave + 1) * 12;
+    const maxMidi = (this.maxOctave + 2) * 12 - 1; // Include the full max octave
+
+    for (let m = minMidi; m <= maxMidi; m++) {
+      const semitone = m % 12;
+      // Check if this semitone matches the scale relative to tonic
+      // (semitone - tonic + 12) % 12 should be in intervals
+      const relative = (semitone - tonicSemitone + 12) % 12;
+      if (intervals.includes(relative)) {
+        validMidiNotes.push(m);
+      }
+    }
+
+    // Map valid notes to NOTE_CONFIG
+    // If we have more notes than slots (12), we pick evenly distributed ones or just the first N
+    // If we have fewer, we might have unused slots
+
+    // Strategy: Distribute available slots to cover the range
+    // NOTE_CONFIG is 12 items.
+
+    if (validMidiNotes.length === 0) {
+      // Fallback
+      validMidiNotes.push(60); // Middle C
+    }
+
+    NOTE_CONFIG.forEach((config, index) => {
+      if (index < validMidiNotes.length) {
+        // We have a note for this slot
+        // If there are more valid notes than slots, we need to skip some to cover the range?
+        // simple mapping for now:
+        // If validNotes.length > 12, we compress?
+
+        let noteIndex = index;
+        if (validMidiNotes.length > 12) {
+          noteIndex = Math.floor(index * (validMidiNotes.length / 12));
+        }
+
+        const midiNote = validMidiNotes[noteIndex];
+        config.active = true;
+        config.midiNote = midiNote;
+        config.label = this.getNoteNameFromMidi(midiNote);
+      } else {
+        config.active = false;
+      }
     });
+
     this.randomizeActiveNoteDurations();
     this.redistributeActiveNoteThresholds();
     this.sortedNotesCache = null;
@@ -1460,6 +1520,13 @@ class CellularAutomataApp {
     return `${value} cell${plural}`;
   }
 
+  getNoteNameFromMidi(midi) {
+    const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const octave = Math.floor(midi / 12) - 1;
+    const noteName = notes[midi % 12];
+    return `${noteName}${octave}`;
+  }
+
   redistributeActiveNoteThresholds() {
     const activeNotes = NOTE_CONFIG.filter((note) => note.active);
     if (activeNotes.length === 0) return;
@@ -1490,6 +1557,8 @@ class CellularAutomataApp {
     this.registerCustomSelect("musicBeatUnitSelect");
     this.registerCustomSelect("keyTonicSelect");
     this.registerCustomSelect("keyScaleSelect");
+    this.registerCustomSelect("minOctaveSelect");
+    this.registerCustomSelect("maxOctaveSelect");
   }
 
   registerCustomSelect(selectId) {
