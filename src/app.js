@@ -34,8 +34,6 @@ const BEAT_UNIT_SHORT_LABELS = {
   0.0625: "1/16"
 };
 
-const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
 const NOTE_NAME_TO_SEMITONE = {
   C: 0,
   "C#": 1,
@@ -1319,6 +1317,7 @@ class CellularAutomataApp {
   renderNoteConfig() {
     const grid = this.elements.noteConfigGrid;
     grid.innerHTML = "";
+    const maxThreshold = this.getMaxNoteThreshold();
     NOTE_CONFIG.forEach((note) => {
       const card = document.createElement('div');
       card.className = 'note-card glass-panel';
@@ -1345,15 +1344,43 @@ class CellularAutomataApp {
 
       const thresholdLabel = document.createElement('label');
       thresholdLabel.textContent = 'Trigger threshold';
-      const thresholdSelect = document.createElement('select');
-      THRESHOLD_OPTIONS.forEach((value) => {
-        const opt = new Option(`${value} cell${value > 1 ? 's' : ''}`, value, false, value === note.threshold);
-        thresholdSelect.appendChild(opt);
-      });
-      thresholdSelect.addEventListener('change', (event) => {
-        note.threshold = Number(event.target.value);
+      const thresholdControls = document.createElement('div');
+      thresholdControls.className = 'field-input bpm-control';
+      const thresholdSlider = document.createElement('input');
+      thresholdSlider.type = 'range';
+      thresholdSlider.min = '1';
+      thresholdSlider.max = String(maxThreshold);
+      thresholdSlider.step = '1';
+      const currentThreshold = this.clampThreshold(note.threshold, maxThreshold);
+      note.threshold = currentThreshold;
+      thresholdSlider.value = String(currentThreshold);
+
+      const thresholdNumber = document.createElement('input');
+      thresholdNumber.type = 'number';
+      thresholdNumber.min = '1';
+      thresholdNumber.max = String(maxThreshold);
+      thresholdNumber.step = '1';
+      thresholdNumber.value = String(currentThreshold);
+
+      const thresholdValue = document.createElement('span');
+      thresholdValue.className = 'value-chip';
+      thresholdValue.textContent = this.formatThresholdLabel(currentThreshold);
+
+      const syncThreshold = (rawValue) => {
+        const validated = this.clampThreshold(rawValue, maxThreshold);
+        thresholdSlider.value = String(validated);
+        thresholdNumber.value = String(validated);
+        thresholdValue.textContent = this.formatThresholdLabel(validated);
+        note.threshold = validated;
         this.sortedNotesCache = null;
-      });
+      };
+
+      thresholdSlider.addEventListener('input', (event) => syncThreshold(Number(event.target.value)));
+      thresholdNumber.addEventListener('input', (event) => syncThreshold(Number(event.target.value)));
+
+      thresholdControls.appendChild(thresholdSlider);
+      thresholdControls.appendChild(thresholdNumber);
+      thresholdControls.appendChild(thresholdValue);
 
       const durationLabel = document.createElement('label');
       durationLabel.textContent = 'Note length';
@@ -1366,7 +1393,7 @@ class CellularAutomataApp {
         note.durationBeats = Number(event.target.value);
       });
 
-      thresholdLabel.appendChild(thresholdSelect);
+      thresholdLabel.appendChild(thresholdControls);
       durationLabel.appendChild(durationSelect);
       card.appendChild(header);
       card.appendChild(activeLabel);
@@ -1396,6 +1423,8 @@ class CellularAutomataApp {
       note.active = allowedSemitones.has(noteSemitone);
       note.midiNote = 36 + noteSemitone;
     });
+    this.randomizeActiveNoteDurations();
+    this.redistributeActiveNoteThresholds();
     this.sortedNotesCache = null;
     if (!skipRender) {
       this.renderNoteConfig();
@@ -1414,6 +1443,41 @@ class CellularAutomataApp {
     this.syncCustomSelectLabel("keyTonicSelect");
     this.syncCustomSelectLabel("keyScaleSelect");
     this.applyKeyPreset();
+  }
+
+  getMaxNoteThreshold() {
+    const totalCells = this.musicBarWidth * this.musicBarHeight;
+    return Math.max(1, Math.floor(totalCells / 2));
+  }
+
+  clampThreshold(value, maxThreshold = this.getMaxNoteThreshold()) {
+    const numeric = Math.floor(Number(value) || 1);
+    return Math.min(maxThreshold, Math.max(1, numeric));
+  }
+
+  formatThresholdLabel(value) {
+    const plural = value === 1 ? '' : 's';
+    return `${value} cell${plural}`;
+  }
+
+  redistributeActiveNoteThresholds() {
+    const activeNotes = NOTE_CONFIG.filter((note) => note.active);
+    if (activeNotes.length === 0) return;
+    const maxThreshold = this.getMaxNoteThreshold();
+    const interval = Math.max(1, Math.floor(maxThreshold / activeNotes.length));
+    activeNotes.forEach((note, index) => {
+      const thresholdValue = this.clampThreshold(1 + index * interval, maxThreshold);
+      note.threshold = thresholdValue;
+    });
+  }
+
+  randomizeActiveNoteDurations() {
+    const durationValues = BEAT_OPTIONS.map((option) => option.value);
+    NOTE_CONFIG.forEach((note) => {
+      if (!note.active) return;
+      const randomIndex = Math.floor(Math.random() * durationValues.length);
+      note.durationBeats = durationValues[randomIndex];
+    });
   }
 
   initCustomSelects() {
