@@ -549,6 +549,25 @@ body {
   gap: 24px;
   max-height: 85vh;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.note-config .overlay-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.note-config .overlay-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.note-config .overlay-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 0;
+}
+
+.note-config .overlay-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
 }
 
 .key-presets {
@@ -575,7 +594,7 @@ body {
 .key-presets-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -586,6 +605,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 160px;
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .note-card header {

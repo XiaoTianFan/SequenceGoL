@@ -1,15 +1,15 @@
 const NOTE_CONFIG = [
-  { id: "note1", label: "A",   color: "note1",  durationBeats: 1,   threshold: 8, midiNote: 45, channel: 1,  active: true },
-  { id: "note2", label: "A#",  color: "note2",  durationBeats: 1,   threshold: 7, midiNote: 46, channel: 2,  active: true },
-  { id: "note3", label: "B",   color: "note3",  durationBeats: 1,   threshold: 6, midiNote: 47, channel: 3,  active: true },
-  { id: "note4", label: "C",   color: "note4",  durationBeats: 1,   threshold: 5, midiNote: 48, channel: 4,  active: true },
-  { id: "note5", label: "C#",  color: "note5",  durationBeats: 1,   threshold: 4, midiNote: 49, channel: 5,  active: true },
-  { id: "note6", label: "D",   color: "note6",  durationBeats: 1,   threshold: 3, midiNote: 50, channel: 6,  active: true },
-  { id: "note7", label: "D#",  color: "note7",  durationBeats: 0.5, threshold: 3, midiNote: 51, channel: 7,  active: true },
-  { id: "note8", label: "E",   color: "note8",  durationBeats: 0.5, threshold: 5, midiNote: 52, channel: 8,  active: true },
-  { id: "note9", label: "F",   color: "note9",  durationBeats: 0.5, threshold: 4, midiNote: 53, channel: 9,  active: true },
+  { id: "note1", label: "A", color: "note1", durationBeats: 1, threshold: 8, midiNote: 45, channel: 1, active: true },
+  { id: "note2", label: "A#", color: "note2", durationBeats: 1, threshold: 7, midiNote: 46, channel: 2, active: true },
+  { id: "note3", label: "B", color: "note3", durationBeats: 1, threshold: 6, midiNote: 47, channel: 3, active: true },
+  { id: "note4", label: "C", color: "note4", durationBeats: 1, threshold: 5, midiNote: 48, channel: 4, active: true },
+  { id: "note5", label: "C#", color: "note5", durationBeats: 1, threshold: 4, midiNote: 49, channel: 5, active: true },
+  { id: "note6", label: "D", color: "note6", durationBeats: 1, threshold: 3, midiNote: 50, channel: 6, active: true },
+  { id: "note7", label: "D#", color: "note7", durationBeats: 0.5, threshold: 3, midiNote: 51, channel: 7, active: true },
+  { id: "note8", label: "E", color: "note8", durationBeats: 0.5, threshold: 5, midiNote: 52, channel: 8, active: true },
+  { id: "note9", label: "F", color: "note9", durationBeats: 0.5, threshold: 4, midiNote: 53, channel: 9, active: true },
   { id: "note10", label: "F#", color: "note10", durationBeats: 0.25, threshold: 3, midiNote: 54, channel: 10, active: true },
-  { id: "note11", label: "G",  color: "note11", durationBeats: 0.25, threshold: 2, midiNote: 55, channel: 11, active: true },
+  { id: "note11", label: "G", color: "note11", durationBeats: 0.25, threshold: 2, midiNote: 55, channel: 11, active: true },
   { id: "note12", label: "G#", color: "note12", durationBeats: 0.25, threshold: 2, midiNote: 56, channel: 12, active: true }
 ];
 
@@ -87,6 +87,12 @@ class CellularAutomataApp {
     this.randomFillAlgorithm = "uniform";
     this.keyTonic = "A";
     this.keyScale = "phrygian_dominant";
+
+    // Sequencer mode state
+    this.sequencerSubMode = "horizontal";
+    this.sequencerPosition = { row: 0, col: 0 };
+    this.sequencerElapsed = 0;
+    this.sequencerSpiralState = { layer: 0, side: 0, step: 0 };
 
     this.isMouseDown = false;
     this.isRightClick = false;
@@ -216,6 +222,8 @@ class CellularAutomataApp {
       spawnRateInput: document.getElementById("spawnRateInput"),
       spawnRateValue: document.getElementById("spawnRateValue"),
       spawnModeSelect: document.getElementById("spawnModeSelect"),
+      sequencerSubModeSelect: document.getElementById("sequencerSubModeSelect"),
+      sequencerSubModeField: document.getElementById("sequencerSubModeField"),
       randomFillSlider: document.getElementById("randomFillSlider"),
       randomFillValue: document.getElementById("randomFillValue"),
       randomFillAlgorithmSelect: document.getElementById("randomFillAlgorithmSelect"),
@@ -279,6 +287,8 @@ class CellularAutomataApp {
       spawnRateInput,
       spawnRateValue,
       spawnModeSelect,
+      sequencerSubModeSelect,
+      sequencerSubModeField,
       randomFillSlider,
       randomFillValue,
       randomFillAlgorithmSelect,
@@ -371,7 +381,22 @@ class CellularAutomataApp {
     spawnRateInput.addEventListener("input", (event) => handleSpawnRateChange(event.target.value));
 
     spawnModeSelect.addEventListener("change", (event) => {
-      this.spawnMode = event.target.value === "scanning" ? "scanning" : "cascade";
+      const value = event.target.value;
+      if (value === "sequencer") {
+        this.spawnMode = "sequencer";
+        sequencerSubModeField.style.display = "";
+      } else {
+        this.spawnMode = value === "scanning" ? "scanning" : "cascade";
+        sequencerSubModeField.style.display = "none";
+      }
+      if (this.isMusicRunning) {
+        this.stopMusic();
+        this.startMusic();
+      }
+    });
+
+    sequencerSubModeSelect.addEventListener("change", (event) => {
+      this.sequencerSubMode = event.target.value;
       if (this.isMusicRunning) {
         this.stopMusic();
         this.startMusic();
@@ -590,6 +615,8 @@ class CellularAutomataApp {
     this.initializeColumns();
     if (this.spawnMode === "scanning") {
       this.spawnFullRow();
+    } else if (this.spawnMode === "sequencer") {
+      this.initializeSequencer();
     }
     this.startCascadeLoop();
   }
@@ -617,6 +644,163 @@ class CellularAutomataApp {
       this.spawnMode === "cascade" ? this.poissonIntervalMs() : 0
     );
     this.columnSpawnAccumulator = 0;
+  }
+
+  initializeSequencer() {
+    this.sequencerPosition = { row: 0, col: 0 };
+    this.sequencerElapsed = 0;
+    this.sequencerSpiralState = { layer: 0, side: 0, step: 0 };
+  }
+
+  getNextSequencerPosition() {
+    switch (this.sequencerSubMode) {
+      case "horizontal":
+        return this.moveSequencerHorizontal();
+      case "vertical":
+        return this.moveSequencerVertical();
+      case "diagonal":
+        return this.moveSequencerDiagonal();
+      case "spiral":
+        return this.moveSequencerSpiral();
+      default:
+        return this.moveSequencerHorizontal();
+    }
+  }
+
+  moveSequencerHorizontal() {
+    const { row, col } = this.sequencerPosition;
+    let nextCol = col + 1;
+    let nextRow = row;
+
+    if (nextCol >= this.activeColumnCount) {
+      nextCol = 0;
+      nextRow = row + 1;
+      if (nextRow >= this.activeColumnCount) {
+        nextRow = 0; // reset to beginning
+      }
+    }
+
+    this.sequencerPosition = { row: nextRow, col: nextCol };
+    return this.sequencerPosition;
+  }
+
+  moveSequencerVertical() {
+    const { row, col } = this.sequencerPosition;
+    let nextRow = row + 1;
+    let nextCol = col;
+
+    if (nextRow >= this.activeColumnCount) {
+      nextRow = 0;
+      nextCol = col + 1;
+      if (nextCol >= this.activeColumnCount) {
+        nextCol = 0; // reset to beginning
+      }
+    }
+
+    this.sequencerPosition = { row: nextRow, col: nextCol };
+    return this.sequencerPosition;
+  }
+
+  moveSequencerDiagonal() {
+    const { row, col } = this.sequencerPosition;
+    let nextRow = row + 1;
+    let nextCol = col + 1;
+
+    // If we go beyond the grid on current diagonal, move to next diagonal
+    if (nextRow >= this.activeColumnCount || nextCol >= this.activeColumnCount) {
+      // There are (2 * activeColumnCount - 1) diagonals total
+      // Current diagonal identification:
+      // If row <= col: diagonal = col - row (starts from top edge)
+      // If row > col: diagonal = activeColumnCount + row - col - 1 (starts from left edge)
+
+      let currentDiagonal;
+      if (row <= col) {
+        currentDiagonal = col - row;
+      } else {
+        currentDiagonal = this.activeColumnCount + (row - col) - 1;
+      }
+
+      // Move to next diagonal
+      const nextDiagonal = currentDiagonal + 1;
+      const totalDiagonals = 2 * this.activeColumnCount - 1;
+
+      if (nextDiagonal >= totalDiagonals) {
+        // Reset to first diagonal
+        nextRow = 0;
+        nextCol = 0;
+      } else if (nextDiagonal < this.activeColumnCount) {
+        // Diagonals starting from top edge
+        nextRow = 0;
+        nextCol = nextDiagonal;
+      } else {
+        // Diagonals starting from left edge
+        nextRow = nextDiagonal - this.activeColumnCount + 1;
+        nextCol = 0;
+      }
+    }
+
+    this.sequencerPosition = { row: nextRow, col: nextCol };
+    return this.sequencerPosition;
+  }
+
+  moveSequencerSpiral() {
+    const { layer, side, step } = this.sequencerSpiralState;
+    const maxLayer = Math.floor(this.activeColumnCount / 2);
+
+    // Check if we've reached the center
+    if (layer >= maxLayer) {
+      // Reset to beginning
+      this.sequencerSpiralState = { layer: 0, side: 0, step: 0 };
+      this.sequencerPosition = { row: 0, col: 0 };
+      return this.sequencerPosition;
+    }
+
+    const layerSize = this.activeColumnCount - layer * 2;
+    let { row, col } = this.sequencerPosition;
+
+    // Move based on current side of the spiral
+    // Side 0: right, Side 1: down, Side 2: left, Side 3: up
+    let nextSide = side;
+    let nextStep = step + 1;
+    let nextLayer = layer;
+
+    if (side === 0) {
+      // Moving right
+      col++;
+      if (nextStep >= layerSize - 1) {
+        nextSide = 1;
+        nextStep = 0;
+      }
+    } else if (side === 1) {
+      // Moving down
+      row++;
+      if (nextStep >= layerSize - 1) {
+        nextSide = 2;
+        nextStep = 0;
+      }
+    } else if (side === 2) {
+      // Moving left
+      col--;
+      if (nextStep >= layerSize - 1) {
+        nextSide = 3;
+        nextStep = 0;
+      }
+    } else if (side === 3) {
+      // Moving up
+      row--;
+      if (nextStep >= layerSize - 2) {
+        // Completed this layer, move to next
+        nextLayer++;
+        nextSide = 0;
+        nextStep = 0;
+        row = nextLayer;
+        col = nextLayer;
+      }
+    }
+
+    this.sequencerSpiralState = { layer: nextLayer, side: nextSide, step: nextStep };
+    this.sequencerPosition = { row, col };
+    return this.sequencerPosition;
   }
 
   updateGridCellSize() {
@@ -658,7 +842,28 @@ class CellularAutomataApp {
 
   updateCascade(deltaMs) {
     const fallStepMs = this.calculateTiming(1);
-    if (this.spawnMode === "scanning") {
+
+    if (this.spawnMode === "sequencer") {
+      // Sequencer mode: single box moving through the grid
+      this.sequencerElapsed += deltaMs;
+
+      if (this.sequencerElapsed >= fallStepMs) {
+        this.sequencerElapsed = 0;
+
+        // Clear previous box if it exists
+        if (this.musicBoxes.length > 0) {
+          const prevBox = this.musicBoxes[0];
+          this.removeBox(prevBox);
+        }
+
+        // Get current position and spawn box
+        const { row, col } = this.sequencerPosition;
+        this.spawnSequencerBox(row, col);
+
+        // Move to next position
+        this.getNextSequencerPosition();
+      }
+    } else if (this.spawnMode === "scanning") {
       // spawn a new full row only after previous row completes
       if (this.musicBoxes.length === 0) {
         this.spawnFullRow();
@@ -678,20 +883,23 @@ class CellularAutomataApp {
       }
     }
 
-    const completedBoxes = [];
-    this.musicBoxes.forEach((box) => {
-      box.elapsed = (box.elapsed || 0) + deltaMs;
-      if (box.elapsed >= fallStepMs) {
-        box.elapsed = 0;
-        this.updateDynamicBox(box);
-        box.row += this.musicBarHeight;
-        if (box.row >= this.gridSize) {
-          completedBoxes.push(box);
+    // Only update moving boxes for non-sequencer modes
+    if (this.spawnMode !== "sequencer") {
+      const completedBoxes = [];
+      this.musicBoxes.forEach((box) => {
+        box.elapsed = (box.elapsed || 0) + deltaMs;
+        if (box.elapsed >= fallStepMs) {
+          box.elapsed = 0;
+          this.updateDynamicBox(box);
+          box.row += this.musicBarHeight;
+          if (box.row >= this.gridSize) {
+            completedBoxes.push(box);
+          }
         }
-      }
-    });
+      });
 
-    completedBoxes.forEach((box) => this.removeBox(box));
+      completedBoxes.forEach((box) => this.removeBox(box));
+    }
   }
 
   spawnBoxesForColumns() {
@@ -718,6 +926,21 @@ class CellularAutomataApp {
     this.musicBoxes.push(box);
     this.updateDynamicBox(box);
   }
+
+  spawnSequencerBox(sequencerRow, sequencerCol) {
+    const box = {
+      columnIndex: sequencerCol,
+      row: sequencerRow * this.musicBarHeight,
+      prevRow: null,
+      elapsed: 0,
+      color: this.pickColumnColor(sequencerCol),
+      id: `box-${(this.boxIdCounter += 1)}`,
+      isSequencer: true
+    };
+    this.musicBoxes.push(box);
+    this.updateDynamicBox(box);
+  }
+
 
   pickColumnColor(columnIndex) {
     const palette = NOTE_COLOR_CLASSES;
@@ -1079,6 +1302,7 @@ class CellularAutomataApp {
     this.registerCustomSelect("ruleSelect");
     this.registerCustomSelect("midiOutputSelect");
     this.registerCustomSelect("spawnModeSelect");
+    this.registerCustomSelect("sequencerSubModeSelect");
     this.registerCustomSelect("randomFillAlgorithmSelect");
     this.registerCustomSelect("keyTonicSelect");
     this.registerCustomSelect("keyScaleSelect");
