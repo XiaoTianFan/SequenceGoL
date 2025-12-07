@@ -25,6 +25,15 @@ const BEAT_OPTIONS = [
   { value: 0.0625, label: "1/16 beat" }
 ];
 
+const DEFAULT_BEAT_UNIT = 0.25;
+const BEAT_UNIT_SHORT_LABELS = {
+  1: "1/1",
+  0.5: "1/2",
+  0.25: "1/4",
+  0.125: "1/8",
+  0.0625: "1/16"
+};
+
 const THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 const NOTE_NAME_TO_SEMITONE = {
@@ -72,9 +81,11 @@ class CellularAutomataApp {
     this.isRunning = false;
     this.simIntervalId = null;
     this.simBpm = 75;
+    this.simBeatUnit = DEFAULT_BEAT_UNIT;
 
     this.isMusicRunning = false;
     this.bpm = 75;
+    this.musicBeatUnit = DEFAULT_BEAT_UNIT;
     this.musicBoxes = [];
     this.boxIdCounter = 0;
     this.cascadeFrameId = null;
@@ -105,6 +116,8 @@ class CellularAutomataApp {
     this.cacheElements();
     this.customSelects = new Map();
     this.initCustomSelects();
+    this.updateSimBpmDisplay();
+    this.updateMusicBpmDisplay();
     this.buildGrid();
     this.attachEventListeners();
     this.applyKeyPreset({ skipRender: true });
@@ -206,8 +219,10 @@ class CellularAutomataApp {
       startBtn: document.getElementById("startBtn"),
       stopBtn: document.getElementById("stopBtn"),
       clearBtn: document.getElementById("clearBtn"),
+      simBpmSlider: document.getElementById("simBpmSlider"),
       simBpmInput: document.getElementById("simBpmInput"),
       simBpmValue: document.getElementById("simBpmValue"),
+      simBeatUnitSelect: document.getElementById("simBeatUnitSelect"),
       ruleSelect: document.getElementById("ruleSelect"),
       generation: document.getElementById("generation"),
       musicStartBtn: document.getElementById("musicStartBtn"),
@@ -215,6 +230,7 @@ class CellularAutomataApp {
       bpmSlider: document.getElementById("bpmSlider"),
       bpmInput: document.getElementById("bpmInput"),
       bpmValue: document.getElementById("bpmValue"),
+      musicBeatUnitSelect: document.getElementById("musicBeatUnitSelect"),
       columnSlider: document.getElementById("columnSlider"),
       columnInput: document.getElementById("columnInput"),
       columnValue: document.getElementById("columnValue"),
@@ -273,13 +289,16 @@ class CellularAutomataApp {
       startBtn,
       stopBtn,
       clearBtn,
+      simBpmSlider,
       simBpmInput,
+      simBeatUnitSelect,
       ruleSelect,
       grid,
       musicStartBtn,
       musicStopBtn,
       bpmSlider,
       bpmInput,
+      musicBeatUnitSelect,
       columnSlider,
       columnInput,
       columnValue,
@@ -314,31 +333,62 @@ class CellularAutomataApp {
       this.currentRule = event.target.value;
     });
 
-    simBpmInput.addEventListener("input", (event) => {
-      this.simBpm = Number(event.target.value) || 60;
+    const handleSimBpmChange = (value) => {
+      const sanitized = Math.min(600, Math.max(30, Number(value) || 75));
+      this.simBpm = sanitized;
+      if (simBpmSlider) {
+        simBpmSlider.value = String(sanitized);
+      }
+      simBpmInput.value = String(sanitized);
       this.updateSimBpmDisplay();
       if (this.isRunning) {
         this.refreshSimulationTempo();
       }
-    });
+    };
+
+    if (simBpmSlider) {
+      simBpmSlider.addEventListener("input", (event) => handleSimBpmChange(event.target.value));
+    }
+    simBpmInput.addEventListener("input", (event) => handleSimBpmChange(event.target.value));
 
     musicStartBtn.addEventListener("click", () => this.startMusic());
     musicStopBtn.addEventListener("click", () => this.stopMusic());
 
     const handleBpmChange = (value) => {
       const sanitized = Math.min(300, Math.max(30, Number(value) || 75));
-      const previousMsPerBeat = 60000 / this.bpm;
+      const previousMsPerBeat = this.getMusicMsPerBeat();
       this.bpm = sanitized;
       bpmSlider.value = String(sanitized);
       bpmInput.value = String(sanitized);
-      this.elements.bpmValue.textContent = `${sanitized} BPM`;
+      this.updateMusicBpmDisplay();
       if (this.isMusicRunning) {
-        this.applyLiveMusicTempoChange(previousMsPerBeat, 60000 / this.bpm);
+        this.applyLiveMusicTempoChange(previousMsPerBeat, this.getMusicMsPerBeat());
       }
     };
 
     bpmSlider.addEventListener("input", (event) => handleBpmChange(event.target.value));
     bpmInput.addEventListener("input", (event) => handleBpmChange(event.target.value));
+
+    if (simBeatUnitSelect) {
+      simBeatUnitSelect.addEventListener("change", (event) => {
+        this.simBeatUnit = Number(event.target.value) || DEFAULT_BEAT_UNIT;
+        this.updateSimBpmDisplay();
+        if (this.isRunning) {
+          this.refreshSimulationTempo();
+        }
+      });
+    }
+
+    if (musicBeatUnitSelect) {
+      musicBeatUnitSelect.addEventListener("change", (event) => {
+        const previousMsPerBeat = this.getMusicMsPerBeat();
+        this.musicBeatUnit = Number(event.target.value) || DEFAULT_BEAT_UNIT;
+        this.updateMusicBpmDisplay();
+        if (this.isMusicRunning) {
+          this.applyLiveMusicTempoChange(previousMsPerBeat, this.getMusicMsPerBeat());
+        }
+      });
+    }
 
     const handleColumnChange = (value) => {
       const sanitized = Math.min(this.maxColumns, Math.max(4, Number(value) || this.activeColumnCount));
@@ -472,7 +522,28 @@ class CellularAutomataApp {
   }
 
   updateSimBpmDisplay() {
-    this.elements.simBpmValue.textContent = `${this.simBpm} BPM`;
+    if (!this.elements?.simBpmValue) return;
+    this.elements.simBpmValue.textContent = `${this.simBpm} BPM · ${this.describeBeatUnit(this.simBeatUnit)}`;
+  }
+
+  updateMusicBpmDisplay() {
+    if (!this.elements?.bpmValue) return;
+    this.elements.bpmValue.textContent = `${this.bpm} BPM · ${this.describeBeatUnit(this.musicBeatUnit)}`;
+  }
+
+  describeBeatUnit(unit) {
+    if (BEAT_UNIT_SHORT_LABELS[unit]) {
+      return BEAT_UNIT_SHORT_LABELS[unit];
+    }
+    const numeric = Number(unit);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return BEAT_UNIT_SHORT_LABELS[DEFAULT_BEAT_UNIT];
+    }
+    if (numeric >= 1) {
+      return `${numeric.toFixed(2).replace(/\.00$/, "")}/1`;
+    }
+    const denominator = Math.round(1 / numeric);
+    return `1/${Math.max(1, denominator)}`;
   }
 
   handlePointerDown(event) {
@@ -552,7 +623,7 @@ class CellularAutomataApp {
   }
 
   calculateSimulationTiming() {
-    return 60000 / this.simBpm;
+    return (60000 / this.simBpm) * this.getBeatUnitMultiplier(this.simBeatUnit);
   }
 
   updateGrid() {
@@ -1046,7 +1117,16 @@ class CellularAutomataApp {
   }
 
   calculateTiming(beats) {
-    return (60000 / this.bpm) * beats;
+    return this.getMusicMsPerBeat() * beats;
+  }
+
+  getMusicMsPerBeat() {
+    return (60000 / this.bpm) * this.getBeatUnitMultiplier(this.musicBeatUnit);
+  }
+
+  getBeatUnitMultiplier(unitValue) {
+    const unit = Number(unitValue) || DEFAULT_BEAT_UNIT;
+    return unit / DEFAULT_BEAT_UNIT;
   }
 
   applyLiveMusicTempoChange(previousMsPerBeat, newMsPerBeat) {
@@ -1338,10 +1418,12 @@ class CellularAutomataApp {
 
   initCustomSelects() {
     this.registerCustomSelect("ruleSelect");
+    this.registerCustomSelect("simBeatUnitSelect");
     this.registerCustomSelect("midiOutputSelect");
     this.registerCustomSelect("spawnModeSelect");
     this.registerCustomSelect("sequencerSubModeSelect");
     this.registerCustomSelect("randomFillAlgorithmSelect");
+    this.registerCustomSelect("musicBeatUnitSelect");
     this.registerCustomSelect("keyTonicSelect");
     this.registerCustomSelect("keyScaleSelect");
   }

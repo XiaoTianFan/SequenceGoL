@@ -34,10 +34,25 @@
         </div>
         <label class="field">
           <span>Simulation BPM</span>
-          <div class="field-input">
+          <div class="field-input bpm-control">
+            <input type="range" id="simBpmSlider" min="30" max="600" value="75" step="5" />
             <input type="number" id="simBpmInput" min="30" max="600" value="75" step="5" />
-            <span id="simBpmValue" class="value-chip">75 BPM</span>
+            <span id="simBpmValue" class="value-chip">75 BPM · 1/4</span>
           </div>
+        </label>
+        <label class="field">
+          <span>Simulation Beat Unit</span>
+          <div class="custom-select" data-select="simBeatUnitSelect">
+            <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Quarter note (1/4)</button>
+            <div class="custom-select-options" role="listbox"></div>
+          </div>
+          <select id="simBeatUnitSelect" class="native-select" aria-hidden="true">
+            <option value="1">Whole note (1/1)</option>
+            <option value="0.5">Half note (1/2)</option>
+            <option value="0.25" selected>Quarter note (1/4)</option>
+            <option value="0.125">Eighth note (1/8)</option>
+            <option value="0.0625">Sixteenth note (1/16)</option>
+          </select>
         </label>
         <label class="field">
           <span>Rule Set</span>
@@ -101,8 +116,22 @@
           <div class="field-input bpm-control">
             <input type="range" id="bpmSlider" min="60" max="200" value="75" step="5" />
             <input type="number" id="bpmInput" min="30" max="300" value="75" step="1" />
-            <span id="bpmValue" class="value-chip">75 BPM</span>
+            <span id="bpmValue" class="value-chip">75 BPM · 1/4</span>
           </div>
+        </label>
+        <label class="field">
+          <span>Music Beat Unit</span>
+          <div class="custom-select" data-select="musicBeatUnitSelect">
+            <button type="button" class="custom-select-toggle" aria-haspopup="listbox" aria-expanded="false">Quarter note (1/4)</button>
+            <div class="custom-select-options" role="listbox"></div>
+          </div>
+          <select id="musicBeatUnitSelect" class="native-select" aria-hidden="true">
+            <option value="1">Whole note (1/1)</option>
+            <option value="0.5">Half note (1/2)</option>
+            <option value="0.25" selected>Quarter note (1/4)</option>
+            <option value="0.125">Eighth note (1/8)</option>
+            <option value="0.0625">Sixteenth note (1/16)</option>
+          </select>
         </label>
         <label class="field">
           <span>Active Columns</span>
