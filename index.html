@@ -106,7 +106,7 @@
       <section class="panel-section glass-panel">
         <header class="section-heading">
           <h2>Music</h2>
-          <span class="badge accent" id="currentScaleLabel">A Phrygian Dominant</span>
+          <span class="badge accent" id="musicScaleLabel">A Phrygian Dominant</span>
         </header>
         <div class="button-row">
           <button id="musicStartBtn" class="cta">Start Music</button>
@@ -186,10 +186,10 @@
                 device</button>
               <div class="custom-select-options" role="listbox"></div>
             </div>
-            <button id="refreshMidiBtn" class="icon-button" aria-label="Refresh MIDI devices">↻</button>
+            <button id="refreshMidiBtn" class="icon-button" aria-label="Refresh MIDI devices" disabled>↻</button>
           </div>
           <select id="midiOutputSelect" class="native-select" aria-hidden="true">
-            <option>Loading...</option>
+            <option value="">Not connected</option>
           </select>
         </label>
         <button id="noteConfigBtn" class="cta outline">Note timing & thresholds</button>
@@ -199,7 +199,10 @@
         <header class="section-heading">
           <h2>MIDI Status</h2>
         </header>
-        <p class="muted" id="midiStatusText">Initializing Web MIDI...</p>
+        <p class="muted" id="midiStatusText">Web MIDI not connected. Click "Connect MIDI" to enable MIDI output.</p>
+        <div class="button-row">
+          <button id="connectMidiBtn" class="cta">Connect MIDI</button>
+        </div>
       </section>
     </div>
   </aside>

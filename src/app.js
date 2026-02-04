@@ -114,6 +114,10 @@ class CellularAutomataApp {
     this.midiAccess = null;
     this.midiOutput = null;
     this.preferredMidiOutputId = null;
+    this.midiStateChangeHandler = null;
+    this.resizeTimeout = null;
+    this.lastGridUpdate = 0;
+    this.gridUpdateThrottle = 50; // ms between updates
 
     this.cacheElements();
     this.customSelects = new Map();
@@ -124,7 +128,8 @@ class CellularAutomataApp {
     this.attachEventListeners();
     this.applyKeyPreset({ skipRender: true });
     this.renderNoteConfig();
-    this.initializeMIDI();
+    this.updateMIDIStatus("Web MIDI not connected. Click 'Connect MIDI' to enable MIDI output.");
+    this.setupCleanup();
   }
 
   spawnFullRow() {
@@ -251,6 +256,7 @@ class CellularAutomataApp {
       minOctaveSelect: document.getElementById("minOctaveSelect"),
       maxOctaveSelect: document.getElementById("maxOctaveSelect"),
       currentScaleLabel: document.getElementById("currentScaleLabel"),
+      musicScaleLabel: document.getElementById("musicScaleLabel"),
       randomizeKeyPresetBtn: document.getElementById("randomizeKeyPresetBtn"),
       midiOutputSelect: document.getElementById("midiOutputSelect"),
       refreshMidiBtn: document.getElementById("refreshMidiBtn"),
@@ -261,7 +267,8 @@ class CellularAutomataApp {
       aboutToggle: document.getElementById("aboutToggle"),
       noteConfigBtn: document.getElementById("noteConfigBtn"),
       noteConfigGrid: document.getElementById("noteConfigGrid"),
-      overlays: document.querySelectorAll(".overlay")
+      overlays: document.querySelectorAll(".overlay"),
+      connectMidiBtn: document.getElementById("connectMidiBtn")
     };
   }
 
@@ -270,21 +277,38 @@ class CellularAutomataApp {
   }
 
   buildGrid() {
-    this.cells = [];
-    this.elements.grid.innerHTML = "";
+    const existingCells = Array.from(this.elements.grid.children);
+    const requiredCells = this.gridSize * this.gridSize;
+
     // apply dynamic grid template to match current gridSize
     this.elements.grid.style.gridTemplateColumns = `repeat(${this.gridSize}, var(--cell-size))`;
     this.elements.grid.style.gridTemplateRows = `repeat(${this.gridSize}, var(--cell-size))`;
-    for (let row = 0; row < this.gridSize; row += 1) {
-      for (let col = 0; col < this.gridSize; col += 1) {
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.dataset.row = String(row);
-        cell.dataset.col = String(col);
-        this.elements.grid.appendChild(cell);
-        this.cells.push(cell);
-      }
+
+    // Reuse existing cells where possible
+    for (let i = 0; i < existingCells.length && i < requiredCells; i++) {
+      const cell = existingCells[i];
+      const row = Math.floor(i / this.gridSize);
+      const col = i % this.gridSize;
+      cell.dataset.row = String(row);
+      cell.dataset.col = String(col);
+      cell.className = 'cell'; // Reset classes
     }
+
+    // Add new cells if needed
+    for (let i = existingCells.length; i < requiredCells; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.row = String(Math.floor(i / this.gridSize));
+      cell.dataset.col = String(i % this.gridSize);
+      this.elements.grid.appendChild(cell);
+    }
+
+    // Remove excess cells
+    for (let i = requiredCells; i < existingCells.length; i++) {
+      existingCells[i].remove();
+    }
+
+    this.cells = Array.from(this.elements.grid.children);
     this.updateGridCellSize();
   }
 
@@ -497,6 +521,7 @@ class CellularAutomataApp {
 
     midiOutputSelect.addEventListener("change", (event) => this.selectMIDIDevice(event.target.value));
     refreshMidiBtn.addEventListener("click", () => this.rescanMIDIDevices());
+    this.elements.connectMidiBtn.addEventListener("click", () => this.initializeMIDI());
 
     grid.addEventListener("mousedown", (event) => this.handlePointerDown(event));
     grid.addEventListener("mousemove", (event) => this.handlePointerMove(event));
@@ -534,7 +559,10 @@ class CellularAutomataApp {
 
     document.addEventListener("click", (event) => this.handleDocumentClick(event));
 
-    window.addEventListener("resize", () => this.updateGridCellSize());
+    window.addEventListener("resize", () => {
+      clearTimeout(this.resizeTimeout);
+      this.resizeTimeout = setTimeout(() => this.updateGridCellSize(), 150);
+    });
   }
 
   updateSimBpmDisplay() {
@@ -643,6 +671,13 @@ class CellularAutomataApp {
   }
 
   updateGrid() {
+    const now = performance.now();
+    // Throttle grid updates to prevent excessive DOM manipulation
+    if (now - this.lastGridUpdate < this.gridUpdateThrottle) {
+      return;
+    }
+    this.lastGridUpdate = now;
+
     for (let row = 0; row < this.gridSize; row += 1) {
       for (let col = 0; col < this.gridSize; col += 1) {
         const currentState = this.grid[row][col];
@@ -691,14 +726,28 @@ class CellularAutomataApp {
   }
 
   renderGrid() {
-    this.cells.forEach((cell, index) => {
+    // Batch DOM reads first
+    const updates = [];
+    for (let index = 0; index < this.cells.length; index++) {
+      const cell = this.cells[index];
       const row = Math.floor(index / this.gridSize);
       const col = index % this.gridSize;
       const state = this.grid[row][col];
-      cell.classList.toggle("alive", state === 1);
-      cell.classList.toggle("dying", state === 2);
-      if (state === 0) {
-        cell.classList.remove("alive", "dying");
+      updates.push({ cell, state });
+    }
+
+    // Then batch DOM writes - minimize reflows
+    requestAnimationFrame(() => {
+      for (let i = 0; i < updates.length; i++) {
+        const { cell, state } = updates[i];
+        // Use className directly for better performance than classList methods
+        if (state === 1) {
+          cell.className = 'cell alive';
+        } else if (state === 2) {
+          cell.className = 'cell dying';
+        } else {
+          cell.className = 'cell';
+        }
       }
     });
   }
@@ -1045,7 +1094,10 @@ class CellularAutomataApp {
   }
 
   removeBox(box) {
-    this.musicBoxes = this.musicBoxes.filter((candidate) => candidate !== box);
+    const index = this.musicBoxes.indexOf(box);
+    if (index !== -1) {
+      this.musicBoxes.splice(index, 1);
+    }
     this.clearBoxArea(box, box.prevRow);
     this.clearBoxArea(box, box.row);
   }
@@ -1196,8 +1248,21 @@ class CellularAutomataApp {
     }
 
     try {
+      // Remove existing listener if present
+      if (this.midiAccess && this.midiStateChangeHandler) {
+        this.midiAccess.removeEventListener("statechange", this.midiStateChangeHandler);
+      }
+
       this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
-      this.midiAccess.addEventListener("statechange", () => this.updateMIDIDeviceList());
+      this.midiStateChangeHandler = () => this.updateMIDIDeviceList();
+      this.midiAccess.addEventListener("statechange", this.midiStateChangeHandler);
+
+      // Update UI state to show MIDI is connected
+      this.elements.refreshMidiBtn.disabled = false;
+      this.elements.connectMidiBtn.textContent = "MIDI Connected";
+      this.elements.connectMidiBtn.disabled = true;
+
+      // Now update the device list (will show devices or "no devices" message)
       this.updateMIDIDeviceList();
     } catch (error) {
       console.warn("MIDI initialization failed", error);
@@ -1215,7 +1280,14 @@ class CellularAutomataApp {
     }
 
     try {
+      // Remove existing listener if present
+      if (this.midiAccess && this.midiStateChangeHandler) {
+        this.midiAccess.removeEventListener("statechange", this.midiStateChangeHandler);
+      }
+
       this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+      this.midiStateChangeHandler = () => this.updateMIDIDeviceList();
+      this.midiAccess.addEventListener("statechange", this.midiStateChangeHandler);
       this.updateMIDIDeviceList();
       this.updateMIDIStatus("MIDI devices refreshed.");
     } catch (error) {
@@ -1229,13 +1301,14 @@ class CellularAutomataApp {
     select.innerHTML = "";
 
     if (!this.midiAccess) {
-      const option = new Option("Web MIDI unavailable", "unavailable");
+      const option = new Option("Not connected", "");
       option.disabled = true;
       option.selected = true;
       select.appendChild(option);
       this.midiOutput = null;
       this.buildCustomSelectOptions("midiOutputSelect");
       this.syncCustomSelectLabel("midiOutputSelect");
+      this.elements.refreshMidiBtn.disabled = true;
       return;
     }
 
@@ -1250,7 +1323,8 @@ class CellularAutomataApp {
       this.preferredMidiOutputId = null;
       this.buildCustomSelectOptions("midiOutputSelect");
       this.syncCustomSelectLabel("midiOutputSelect");
-      this.updateMIDIStatus("No MIDI outputs detected. Connect a device and refresh.");
+      // MIDI is connected but no devices - show appropriate message
+      this.updateMIDIStatus("MIDI connected. No output devices detected. Connect a device and click Refresh.");
       return;
     }
 
@@ -1303,7 +1377,7 @@ class CellularAutomataApp {
     // Most synths will treat a new NoteOn for the same pitch as a re-trigger or voice steal.
     if (this.activeNotes.has(key)) {
       clearTimeout(this.activeNotes.get(key));
-      // removed: this.sendNoteOff(note, channel); 
+      this.activeNotes.delete(key);
     }
 
     this.sendNoteOn(note, velocity, channel);
@@ -1438,8 +1512,14 @@ class CellularAutomataApp {
 
   updateCurrentScaleLabel() {
     const label = SCALE_LIBRARY[this.keyScale]?.label || "Custom";
+    const labelText = `${this.keyTonic} ${label}`;
+
+    // Update both scale labels
     if (this.elements.currentScaleLabel) {
-      this.elements.currentScaleLabel.textContent = `${this.keyTonic} ${label}`;
+      this.elements.currentScaleLabel.textContent = labelText;
+    }
+    if (this.elements.musicScaleLabel) {
+      this.elements.musicScaleLabel.textContent = labelText;
     }
   }
 
@@ -1666,6 +1746,29 @@ class CellularAutomataApp {
     if (!isSelectClick) {
       this.closeAllCustomSelects();
     }
+  }
+
+  setupCleanup() {
+    window.addEventListener('beforeunload', () => {
+      // Stop animation loops
+      if (this.cascadeFrameId) {
+        cancelAnimationFrame(this.cascadeFrameId);
+      }
+
+      // Clear all MIDI timeouts
+      this.activeNotes.forEach((timeoutId) => clearTimeout(timeoutId));
+      this.activeNotes.clear();
+
+      // Remove MIDI event listener
+      if (this.midiAccess && this.midiStateChangeHandler) {
+        this.midiAccess.removeEventListener("statechange", this.midiStateChangeHandler);
+      }
+
+      // Stop background animation
+      if (window.stopBackgroundAnimation) {
+        window.stopBackgroundAnimation();
+      }
+    });
   }
 }
 

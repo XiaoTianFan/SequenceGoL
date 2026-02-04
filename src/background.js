@@ -90,7 +90,12 @@
     return v;
   }
 
+  let rafId = 0;
+  let isRunning = true;
+
   function drawFrame(time) {
+    if (!isRunning) return;
+
     const t = (time - startTime) / 1000; // seconds
     // paint background
     ctx.fillStyle = opts.bg;
@@ -123,16 +128,26 @@
     rafId = requestAnimationFrame(drawFrame);
   }
 
-  let rafId = 0;
   resize();
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      isRunning = false;
       cancelAnimationFrame(rafId);
     } else {
+      isRunning = true;
       startTime = performance.now();
       rafId = requestAnimationFrame(drawFrame);
     }
   });
   rafId = requestAnimationFrame(drawFrame);
+
+  // Export stop function for cleanup
+  window.stopBackgroundAnimation = () => {
+    isRunning = false;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+  };
 })();
